@@ -192,6 +192,41 @@ lib/src/
 - **SemVer versioning** for releases
 - End-developer focused documentation approach
 
+## Development Stages & Tracking
+
+### **Project Roadmap**
+The project follows a **5-stage development roadmap** (11 weeks total):
+
+1. **STAGE 1: Data System** (Weeks 1-3) - Database, Cache, Repositories
+2. **STAGE 2: Core System** (Weeks 4-5) - Engine, Pipeline, Context
+3. **STAGE 3: Translation Layers** (Weeks 6-8) - 6 translation processing layers
+4. **STAGE 4: Quality & Data** (Weeks 9-10) - Data population, quality improvements
+5. **STAGE 5: Production Readiness** (Week 11) - API finalization, packaging
+
+### **Current Status**
+- **Active Stage**: STAGE 1 - Data System (35% complete)
+- **Active Substage**: 1.2 - Cache System (CacheManager with LRU)
+- **Progress**: 25% of overall project completion
+- **Critical Path**: CacheManager → Repository Layer → Core System
+
+### **Stage Tracking Files**
+- `CHECKLISTS/DEVELOPMENT_STAGES.md` - Detailed stage breakdown with substages
+- `CHECKLISTS/FILES_STATUS.md` - Individual file completion status
+- `CHECKLISTS/Reports/CHANGELOG.md` - Version and commit history
+
+### **Stage Completion Criteria**
+Each stage has **mandatory completion criteria** that must be met:
+- All components implemented and tested
+- Integration tests passing
+- Performance benchmarks met
+- Quality gates satisfied
+
+### **Priority System**
+- 🔥 **CRITICAL** - Blocks further development (CacheManager, TranslationResult)
+- ⚡ **HIGH** - Needed for current stage (Repository classes)
+- 📋 **MEDIUM** - Next stage preparation (Core components)
+- 📝 **LOW** - Optimization and polish
+
 ## Development Principles
 
 This project is developed as a **clean Flutter library** following:
@@ -199,6 +234,69 @@ This project is developed as a **clean Flutter library** following:
 - **Clean Code** practices for maintainability
 - **Full test coverage** for reliability
 - **Commercial licensing** for business use
+- **Stage-based development** with mandatory quality gates
+
+## Warp Agent Responsibilities
+
+### **Stage Management Tasks**
+The Warp Agent is responsible for maintaining project progression:
+
+#### **Before Starting Work**
+1. Check current stage in `DEVELOPMENT_STAGES.md`
+2. Verify current substage priorities
+3. Confirm completion criteria for active tasks
+4. Review critical path dependencies
+
+#### **During Development**
+1. Update component status in `FILES_STATUS.md` after each significant change
+2. Mark tasks as in-progress (🟡) when starting
+3. Update percentage completion estimates
+4. Add blocking issues to critical priorities list
+
+#### **After Completing Components**
+1. Mark completed tasks as done (🟢) in `FILES_STATUS.md`
+2. Update substage progress in `DEVELOPMENT_STAGES.md`
+3. Run and verify all tests pass
+4. Update CHANGELOG.md with commit information
+
+#### **Stage Completion Protocol**
+1. **Substage Completion**: Verify all substage criteria are met
+2. **Stage Completion**: Create detailed report in `CHECKLISTS/Reports/`
+3. **Integration Testing**: Ensure all components work together
+4. **Next Stage Setup**: Update priorities for upcoming work
+
+### **File Maintenance Schedule**
+- **FILES_STATUS.md**: Update after every file modification
+- **DEVELOPMENT_STAGES.md**: Update after completing each task/subtask
+- **CHANGELOG.md**: Update with every commit
+- **Progress Reports**: Create at end of each substage
+
+### **Critical Path Monitoring**
+**Current Critical Tasks (STAGE 1.2):**
+1. 🔥 **CacheManager** implementation with LRU algorithm
+2. 🔥 **Cache Integration** with DatabaseManager
+3. 🔥 **Cache Testing** comprehensive unit tests
+4. 🔥 **Memory Management** monitoring and limits
+
+**Next Critical Tasks (STAGE 1.3-1.4):**
+5. **TranslationResult** model creation
+6. **Repository Layer** implementation
+7. **Integration Tests** for Data Layer
+
+### **Quality Gates**
+Before progressing to next stage, ensure:
+- All unit tests pass (100% for critical components)
+- Integration tests validate component interaction
+- Performance benchmarks meet requirements
+- Code coverage meets project standards
+- All critical and high priority tasks completed
+
+### **Escalation Protocol**
+If critical tasks are blocked:
+1. Document blocking issue in `FILES_STATUS.md`
+2. Mark affected downstream tasks as at-risk
+3. Propose alternative implementation paths
+4. Update stage timeline estimates if needed
 
 ## Language Setting
 
