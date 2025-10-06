@@ -42,7 +42,7 @@
 - [x] LRU кэш работает с лимитами памяти ✅
 - [x] Все Repository классы реализованы ✅
 - [x] 100% покрытие тестами Repository слоя ✅
-- [ ] Интеграционные тесты Database + Cache + Repository ❌
+- [x] Интеграционные тесты Database + Cache + Repository ✅
 
 ---
 
