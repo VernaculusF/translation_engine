@@ -361,8 +361,8 @@ void main() {
         final results = await dictDb.query('words', where: 'lang_pair = ?', whereArgs: ['en-ru']);
         expect(results.length, greaterThanOrEqualTo(5));
         
-        final concurrent_words = results.where((r) => (r['word'] as String).startsWith('concurrent')).toList();
-        expect(concurrent_words.length, equals(5));
+        final concurrentWords = results.where((r) => (r['word'] as String).startsWith('concurrent')).toList();
+        expect(concurrentWords.length, equals(5));
       });
 
       test('should handle cache operations efficiently', () async {

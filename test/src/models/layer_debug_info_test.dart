@@ -4,7 +4,7 @@ import 'package:translation_engine/src/models/layer_debug_info.dart';
 void main() {
   group('LayerDebugInfo', () {
     test('should create LayerDebugInfo with basic constructor', () {
-      final debugInfo = LayerDebugInfo(
+      const debugInfo = LayerDebugInfo(
         layerName: 'TestLayer',
         processingTimeMs: 100,
       );
@@ -100,7 +100,7 @@ void main() {
 
     group('computed properties', () {
       test('should calculate cache hit rate correctly', () {
-        final debugInfo = LayerDebugInfo(
+        const debugInfo = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
           cacheHits: 8,
@@ -111,7 +111,7 @@ void main() {
       });
 
       test('should return 0 cache hit rate when no cache requests', () {
-        final debugInfo = LayerDebugInfo(
+        const debugInfo = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
         );
@@ -120,7 +120,7 @@ void main() {
       });
 
       test('should calculate processing rate correctly', () {
-        final debugInfo = LayerDebugInfo(
+        const debugInfo = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
           itemsProcessed: 10,
@@ -131,7 +131,7 @@ void main() {
       });
 
       test('should return 0 processing rate when no time', () {
-        final debugInfo = LayerDebugInfo(
+        const debugInfo = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 0,
           itemsProcessed: 10,
@@ -141,7 +141,7 @@ void main() {
       });
 
       test('should calculate modification rate correctly', () {
-        final debugInfo = LayerDebugInfo(
+        const debugInfo = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
           itemsProcessed: 20,
@@ -152,7 +152,7 @@ void main() {
       });
 
       test('should return 0 modification rate when no items processed', () {
-        final debugInfo = LayerDebugInfo(
+        const debugInfo = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
           itemsProcessed: 0,
@@ -163,13 +163,13 @@ void main() {
       });
 
       test('should detect warnings correctly', () {
-        final debugInfoWithWarnings = LayerDebugInfo(
+        const debugInfoWithWarnings = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
           warnings: ['Warning 1', 'Warning 2'],
         );
 
-        final debugInfoWithoutWarnings = LayerDebugInfo(
+        const debugInfoWithoutWarnings = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
         );
@@ -181,7 +181,7 @@ void main() {
 
     group('serialization', () {
       test('should serialize to Map correctly', () {
-        final debugInfo = LayerDebugInfo(
+        const debugInfo = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 200,
           isSuccessful: true,
@@ -275,7 +275,7 @@ void main() {
       });
 
       test('should round-trip serialize and deserialize', () {
-        final original = LayerDebugInfo(
+        const original = LayerDebugInfo(
           layerName: 'RoundTripLayer',
           processingTimeMs: 300,
           isSuccessful: true,
@@ -312,7 +312,7 @@ void main() {
       late LayerDebugInfo original;
 
       setUp(() {
-        original = LayerDebugInfo(
+        original = const LayerDebugInfo(
           layerName: 'OriginalLayer',
           processingTimeMs: 100,
           itemsProcessed: 10,
@@ -430,14 +430,14 @@ void main() {
 
     group('equality and hashCode', () {
       test('should be equal when key properties are same', () {
-        final debugInfo1 = LayerDebugInfo(
+        const debugInfo1 = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
           isSuccessful: true,
           hasError: false,
         );
 
-        final debugInfo2 = LayerDebugInfo(
+        const debugInfo2 = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
           isSuccessful: true,
@@ -450,17 +450,17 @@ void main() {
       });
 
       test('should not be equal when key properties differ', () {
-        final debugInfo1 = LayerDebugInfo(
+        const debugInfo1 = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
         );
 
-        final debugInfo2 = LayerDebugInfo(
+        const debugInfo2 = LayerDebugInfo(
           layerName: 'DifferentLayer',
           processingTimeMs: 100,
         );
 
-        final debugInfo3 = LayerDebugInfo(
+        const debugInfo3 = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 200,
         );
@@ -472,7 +472,7 @@ void main() {
       });
 
       test('should handle self-equality', () {
-        final debugInfo = LayerDebugInfo(
+        const debugInfo = LayerDebugInfo(
           layerName: 'TestLayer',
           processingTimeMs: 100,
         );

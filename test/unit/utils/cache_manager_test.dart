@@ -173,7 +173,7 @@ void main() {
         cache.putWord(entry);
         
         // Небольшая задержка
-        await Future.delayed(Duration(milliseconds: 10));
+        await Future.delayed(const Duration(milliseconds: 10));
         
         final retrieved = cache.getWord('test', 'en-ru');
         expect(retrieved!.lastUsed, greaterThan(now - 1000));
