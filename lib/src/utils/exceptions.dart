@@ -13,3 +13,7 @@ class DatabaseInitException extends TranslationException {
 class DatabaseQueryException extends TranslationException {
   DatabaseQueryException(super.message);
 }
+
+class ValidationException extends TranslationException {
+  ValidationException(super.message);
+}

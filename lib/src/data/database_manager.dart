@@ -3,6 +3,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart';
 import '../utils/exceptions.dart';
+import 'database_types.dart';
 
 class DatabaseManager {
   static final DatabaseManager _instance = DatabaseManager._internal();
@@ -248,6 +249,28 @@ class DatabaseManager {
     }
   }
   
+  /// Получение соединения с базой данных по типу
+  Future<DatabaseConnection> getConnection(DatabaseType type) async {
+    switch (type) {
+      case DatabaseType.dictionaries:
+        final db = await database;
+        return SqliteDatabaseConnection(db);
+      case DatabaseType.phrases:
+        final db = await initPhrasesDatabase();
+        return SqliteDatabaseConnection(db);
+      case DatabaseType.userData:
+        final db = await initUserDataDatabase();
+        return SqliteDatabaseConnection(db);
+    }
+  }
+
+  /// Закрытие соединения с базой данных
+  Future<void> closeConnection(DatabaseConnection connection) async {
+    // В текущей реализации мы не закрываем соединения индивидуально,
+    // так как они переиспользуются через singleton паттерн
+    // Закрытие происходит только при вызове close() или reset()
+  }
+
   /// Метод для полной очистки (для тестов)
   Future<void> reset() async {
     await close();
