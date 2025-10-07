@@ -73,10 +73,11 @@ abstract class TranslationLayer {
 /// Управляет последовательным выполнением слоев обработки текста.
 /// Обеспечивает мониторинг состояния и обработку ошибок.
 class TranslationPipeline {
-  final DictionaryRepository _dictionaryRepository;
-  final PhraseRepository _phraseRepository;
-  final UserDataRepository _userDataRepository;
-  final CacheManager _cacheManager;
+  // Data repositories for layer implementations (Stage 3)
+  final DictionaryRepository dictionaryRepository;
+  final PhraseRepository phraseRepository;
+  final UserDataRepository userDataRepository;
+  final CacheManager cacheManager;
   
   // Pipeline state
   PipelineState _state = PipelineState.idle;
@@ -95,15 +96,11 @@ class TranslationPipeline {
   Exception? _lastError;
   
   TranslationPipeline({
-    required DictionaryRepository dictionaryRepository,
-    required PhraseRepository phraseRepository,
-    required UserDataRepository userDataRepository,
-    required CacheManager cacheManager,
-  })
-      : _dictionaryRepository = dictionaryRepository,
-        _phraseRepository = phraseRepository,
-        _userDataRepository = userDataRepository,
-        _cacheManager = cacheManager {
+    required this.dictionaryRepository,
+    required this.phraseRepository,
+    required this.userDataRepository,
+    required this.cacheManager,
+  }) {
     _initializeDefaultLayers();
   }
   
@@ -122,6 +119,9 @@ class TranslationPipeline {
   /// Список зарегистрированных слоев
   List<TranslationLayer> get layers => List.unmodifiable(_layers);
   
+  /// Проверить доступность репозиториев для слоев
+  bool get hasDataAccess => true; // All repositories are required in constructor
+  
   /// Статистика pipeline
   Map<String, dynamic> get statistics => {
     'processed_texts': _processedTexts,
@@ -130,6 +130,13 @@ class TranslationPipeline {
         ? _totalProcessingTime.inMilliseconds / _processedTexts
         : 0,
     'layers_count': _layers.length,
+    'data_access_available': hasDataAccess,
+    'repositories': {
+      'dictionary_ready': true, // Required in constructor
+      'phrase_ready': true, // Required in constructor
+      'user_data_ready': true, // Required in constructor
+      'cache_ready': true, // Required in constructor
+    },
     'layer_statistics': _layerProcessingTimes.map(
       (type, time) => MapEntry(
         type.toString(),
