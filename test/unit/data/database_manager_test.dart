@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:translation_engine/src/data/database_manager.dart';
@@ -7,7 +7,6 @@ import 'package:translation_engine/src/utils/exceptions.dart';
 import '../../helpers/test_database_helper.dart';
 
 void main() {
-  TestWidgetsFlutterBinding.ensureInitialized();
   
   group('DatabaseManager', () {
     late DatabaseManager databaseManager;
@@ -86,7 +85,7 @@ void main() {
         final schema = await TestDatabaseHelper.getTableSchema(db, 'words');
         final columnNames = schema.map((col) => col['name'] as String).toList();
         
-        expect(columnNames, containsAll(['id', 'word', 'translation', 'lang_pair', 'frequency']));
+        expect(columnNames, containsAll(['id', 'source_word', 'target_word', 'language_pair', 'frequency']));
         
         // Проверяем типы данных
         final columnInfo = {for (var col in schema) col['name']: col};
@@ -100,10 +99,10 @@ void main() {
         final schema = await TestDatabaseHelper.getTableSchema(db, 'word_cache');
         final columnNames = schema.map((col) => col['name'] as String).toList();
         
-        expect(columnNames, containsAll(['word', 'translation', 'lang_pair', 'last_used']));
+        expect(columnNames, containsAll(['source_word', 'target_word', 'language_pair', 'last_used']));
         
         // Проверяем primary key
-        final wordColumn = schema.firstWhere((col) => col['name'] == 'word');
+        final wordColumn = schema.firstWhere((col) => col['name'] == 'source_word');
         expect(wordColumn['pk'], equals(1));
       });
 
@@ -122,9 +121,9 @@ void main() {
         // Попытка вставить пустое слово должна завершиться неудачей
         expect(
           () async => await db.insert('words', {
-            'word': '',
-            'translation': 'test',
-            'lang_pair': 'en-ru',
+            'source_word': '',
+            'target_word': 'test',
+            'language_pair': 'en-ru',
           }),
           throwsA(isA<DatabaseException>()),
         );
@@ -132,9 +131,9 @@ void main() {
         // Попытка вставить пустой перевод должна завершиться неудачей
         expect(
           () async => await db.insert('words', {
-            'word': 'test',
-            'translation': '',
-            'lang_pair': 'en-ru',
+            'source_word': 'test',
+            'target_word': '',
+            'language_pair': 'en-ru',
           }),
           throwsA(isA<DatabaseException>()),
         );
@@ -143,19 +142,22 @@ void main() {
       test('should allow valid data insertion', () async {
         final db = await databaseManager.database;
         
+        final now = DateTime.now().millisecondsSinceEpoch;
         final id = await db.insert('words', {
-          'word': 'hello',
-          'translation': 'привет',
-          'lang_pair': 'en-ru',
+          'source_word': 'hello',
+          'target_word': 'привет',
+          'language_pair': 'en-ru',
           'frequency': 100,
+          'created_at': now,
+          'updated_at': now,
         });
         
         expect(id, greaterThan(0));
         
         final result = await db.query('words', where: 'id = ?', whereArgs: [id]);
         expect(result.length, equals(1));
-        expect(result.first['word'], equals('hello'));
-        expect(result.first['translation'], equals('привет'));
+        expect(result.first['source_word'], equals('hello'));
+        expect(result.first['target_word'], equals('привет'));
       });
     });
 
@@ -190,7 +192,7 @@ void main() {
         final schema = await TestDatabaseHelper.getTableSchema(db, 'phrases');
         final columnNames = schema.map((col) => col['name'] as String).toList();
         
-        expect(columnNames, containsAll(['id', 'phrase', 'translation', 'lang_pair', 'usage_count']));
+        expect(columnNames, containsAll(['id', 'source_phrase', 'target_phrase', 'language_pair', 'usage_count']));
       });
 
       test('should create phrase indexes', () async {
@@ -203,11 +205,14 @@ void main() {
       test('should allow phrase insertion', () async {
         final db = await databaseManager.initPhrasesDatabase();
         
+        final now = DateTime.now().millisecondsSinceEpoch;
         final id = await db.insert('phrases', {
-          'phrase': 'good morning',
-          'translation': 'доброе утро',
-          'lang_pair': 'en-ru',
+          'source_phrase': 'good morning',
+          'target_phrase': 'доброе утро',
+          'language_pair': 'en-ru',
           'usage_count': 50,
+          'created_at': now,
+          'updated_at': now,
         });
         
         expect(id, greaterThan(0));
@@ -235,19 +240,20 @@ void main() {
         final tables = await TestDatabaseHelper.getAllTables(db);
         
         expect(tables, contains('schema_info'));
-        expect(tables, contains('user_corrections'));
         expect(tables, contains('translation_history'));
+        expect(tables, contains('user_settings'));
+        expect(tables, contains('user_translation_edits'));
         expect(tables, contains('context_cache'));
       });
 
-      test('should create user_corrections table with correct schema', () async {
+      test('should create user_translation_edits table with correct schema', () async {
         final db = await databaseManager.initUserDataDatabase();
         
-        final schema = await TestDatabaseHelper.getTableSchema(db, 'user_corrections');
+        final schema = await TestDatabaseHelper.getTableSchema(db, 'user_translation_edits');
         final columnNames = schema.map((col) => col['name'] as String).toList();
         
         expect(columnNames, containsAll([
-          'id', 'original_text', 'corrected_translation', 'lang_pair', 'created_at'
+          'id', 'original_text', 'user_translation', 'language_pair', 'created_at'
         ]));
       });
 
@@ -258,7 +264,7 @@ void main() {
         final columnNames = schema.map((col) => col['name'] as String).toList();
         
         expect(columnNames, containsAll([
-          'id', 'original_text', 'translated_text', 'lang_pair', 'timestamp'
+          'id', 'original_text', 'translated_text', 'language_pair', 'timestamp'
         ]));
       });
 
@@ -269,7 +275,7 @@ void main() {
         final columnNames = schema.map((col) => col['name'] as String).toList();
         
         expect(columnNames, containsAll([
-          'id', 'context_key', 'translation_result', 'lang_pair', 'last_used'
+          'id', 'context_key', 'translation_result', 'language_pair', 'last_used'
         ]));
       });
 
@@ -278,31 +284,36 @@ void main() {
         
         final indexes = await TestDatabaseHelper.getAllIndexes(db);
         
-        expect(indexes, contains('idx_user_corrections_lang'));
+        expect(indexes, contains('idx_history_lang'));
         expect(indexes, contains('idx_history_timestamp'));
         expect(indexes, contains('idx_context_key'));
+        expect(indexes, contains('idx_user_edits_lang'));
       });
 
       test('should allow user data insertion', () async {
         final db = await databaseManager.initUserDataDatabase();
         
-        // Test user corrections
-        final correctionId = await db.insert('user_corrections', {
-          'original_text': 'hello world',
-          'corrected_translation': 'привет мир',
-          'lang_pair': 'en-ru',
-          'created_at': DateTime.now().millisecondsSinceEpoch,
-        });
-        expect(correctionId, greaterThan(0));
-
+        final now = DateTime.now().millisecondsSinceEpoch;
+        
         // Test translation history
         final historyId = await db.insert('translation_history', {
           'original_text': 'test phrase',
           'translated_text': 'тестовая фраза',
-          'lang_pair': 'en-ru',
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'language_pair': 'en-ru',
+          'confidence': 0.95,
+          'processing_time_ms': 100,
+          'timestamp': now,
         });
         expect(historyId, greaterThan(0));
+        
+        // Test user settings
+        final settingsId = await db.insert('user_settings', {
+          'setting_key': 'default_language',
+          'setting_value': 'en-ru',
+          'created_at': now,
+          'updated_at': now,
+        });
+        expect(settingsId, isNotNull);
       });
     });
 
@@ -477,9 +488,9 @@ void main() {
         await db.transaction((txn) async {
           for (int i = 0; i < 100; i++) {
             await txn.insert('words', {
-              'word': 'word$i',
-              'translation': 'слово$i',
-              'lang_pair': 'en-ru',
+              'source_word': 'word$i',
+              'target_word': 'слово$i',
+              'language_pair': 'en-ru',
               'frequency': i,
             });
           }
@@ -501,21 +512,21 @@ void main() {
         
         // Вставляем тестовые данные
         await db.insert('words', {
-          'word': 'test',
-          'translation': 'тест',
-          'lang_pair': 'en-ru',
+          'source_word': 'test',
+          'target_word': 'тест',
+          'language_pair': 'en-ru',
           'frequency': 100,
         });
         
-        // Запрос, который должен использовать индекс idx_word_lang
+        // Запрос, который должен использовать индекс idx_source_word_lang
         final result = await db.query(
           'words',
-          where: 'word = ? AND lang_pair = ?',
+          where: 'source_word = ? AND language_pair = ?',
           whereArgs: ['test', 'en-ru'],
         );
         
         expect(result.length, equals(1));
-        expect(result.first['translation'], equals('тест'));
+        expect(result.first['target_word'], equals('тест'));
       });
 
       test('should maintain cache table functionality', () async {
@@ -525,16 +536,16 @@ void main() {
         
         // Вставляем в кэш
         await db.insert('word_cache', {
-          'word': 'cached_word',
-          'translation': 'кэшированное слово',
-          'lang_pair': 'en-ru',
+          'source_word': 'cached_word',
+          'target_word': 'кэшированное слово',
+          'language_pair': 'en-ru',
           'last_used': now,
         });
         
         // Проверяем, что можем найти в кэше
         final cached = await db.query(
           'word_cache',
-          where: 'word = ?',
+          where: 'source_word = ?',
           whereArgs: ['cached_word'],
         );
         

@@ -66,25 +66,29 @@ class DatabaseManager {
     await db.execute('''
       CREATE TABLE words (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        word TEXT NOT NULL CHECK(length(word) > 0),
-        translation TEXT NOT NULL CHECK(length(translation) > 0),
-        lang_pair TEXT NOT NULL CHECK(length(lang_pair) > 0),
-        frequency INTEGER DEFAULT 0
+        source_word TEXT NOT NULL CHECK(length(source_word) > 0),
+        target_word TEXT NOT NULL CHECK(length(target_word) > 0),
+        language_pair TEXT NOT NULL CHECK(length(language_pair) > 0),
+        part_of_speech TEXT,
+        definition TEXT,
+        frequency INTEGER DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       )
     ''');
 
     // Таблица для кэша слов
     await db.execute('''
       CREATE TABLE word_cache (
-        word TEXT PRIMARY KEY NOT NULL CHECK(length(word) > 0),
-        translation TEXT NOT NULL,
-        lang_pair TEXT NOT NULL,
+        source_word TEXT PRIMARY KEY NOT NULL CHECK(length(source_word) > 0),
+        target_word TEXT NOT NULL,
+        language_pair TEXT NOT NULL,
         last_used INTEGER NOT NULL
       )
     ''');
 
     // Индексы для быстрого поиска
-    await db.execute('CREATE INDEX idx_word_lang ON words(word, lang_pair)');
+    await db.execute('CREATE INDEX idx_word_lang ON words(source_word, language_pair)');
     await db.execute('CREATE INDEX idx_frequency ON words(frequency)');
   }
 
@@ -133,25 +137,29 @@ class DatabaseManager {
     await db.execute('''
       CREATE TABLE phrases (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        phrase TEXT NOT NULL CHECK(length(phrase) > 0),
-        translation TEXT NOT NULL CHECK(length(translation) > 0),
-        lang_pair TEXT NOT NULL CHECK(length(lang_pair) > 0),
-        usage_count INTEGER DEFAULT 0
+        source_phrase TEXT NOT NULL CHECK(length(source_phrase) > 0),
+        target_phrase TEXT NOT NULL CHECK(length(target_phrase) > 0),
+        language_pair TEXT NOT NULL CHECK(length(language_pair) > 0),
+        category TEXT,
+        context TEXT,
+        usage_count INTEGER DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       )
     ''');
 
     // Таблица для кэша фраз
     await db.execute('''
       CREATE TABLE phrase_cache (
-        phrase TEXT PRIMARY KEY NOT NULL CHECK(length(phrase) > 0),
-        translation TEXT NOT NULL,
-        lang_pair TEXT NOT NULL,
+        source_phrase TEXT PRIMARY KEY NOT NULL CHECK(length(source_phrase) > 0),
+        target_phrase TEXT NOT NULL,
+        language_pair TEXT NOT NULL,
         last_used INTEGER NOT NULL
       )
     ''');
 
     // Индекс для быстрого поиска фраз
-    await db.execute('CREATE INDEX idx_phrase_lang ON phrases(phrase, lang_pair)');
+    await db.execute('CREATE INDEX idx_phrase_lang ON phrases(source_phrase, language_pair)');
   }
 
   // Метод для инициализации базы пользовательских данных
@@ -195,25 +203,43 @@ class DatabaseManager {
     
     await db.execute('INSERT INTO schema_info (version) VALUES (1)');
 
-    // Таблица для пользовательских исправлений
-    await db.execute('''
-      CREATE TABLE user_corrections (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        original_text TEXT NOT NULL,
-        corrected_translation TEXT NOT NULL,
-        lang_pair TEXT NOT NULL,
-        created_at INTEGER NOT NULL
-      )
-    ''');
-
     // Таблица для истории переводов
     await db.execute('''
       CREATE TABLE translation_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         original_text TEXT NOT NULL,
         translated_text TEXT NOT NULL,
-        lang_pair TEXT NOT NULL,
-        timestamp INTEGER NOT NULL
+        language_pair TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        processing_time_ms INTEGER NOT NULL,
+        timestamp INTEGER NOT NULL,
+        session_id TEXT,
+        metadata TEXT
+      )
+    ''');
+
+    // Таблица для пользовательских настроек
+    await db.execute('''
+      CREATE TABLE user_settings (
+        setting_key TEXT PRIMARY KEY,
+        setting_value TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+
+    // Таблица для пользовательских редактирований переводов
+    await db.execute('''
+      CREATE TABLE user_translation_edits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        original_text TEXT NOT NULL,
+        original_translation TEXT NOT NULL,
+        user_translation TEXT NOT NULL,
+        language_pair TEXT NOT NULL,
+        reason TEXT,
+        is_approved INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       )
     ''');
 
@@ -223,15 +249,16 @@ class DatabaseManager {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         context_key TEXT NOT NULL,
         translation_result TEXT NOT NULL,
-        lang_pair TEXT NOT NULL,
+        language_pair TEXT NOT NULL,
         last_used INTEGER NOT NULL
       )
     ''');
 
     // Индексы для пользовательских данных
-    await db.execute('CREATE INDEX idx_user_corrections_lang ON user_corrections(lang_pair)');
+    await db.execute('CREATE INDEX idx_history_lang ON translation_history(language_pair)');
     await db.execute('CREATE INDEX idx_history_timestamp ON translation_history(timestamp)');
     await db.execute('CREATE INDEX idx_context_key ON context_cache(context_key)');
+    await db.execute('CREATE INDEX idx_user_edits_lang ON user_translation_edits(language_pair)');
   }
 
   Future<void> close() async {
@@ -307,8 +334,9 @@ class DatabaseManager {
              phraseTableNames.contains('phrases') &&
              phraseTableNames.contains('phrase_cache') &&
              userTableNames.contains('schema_info') &&
-             userTableNames.contains('user_corrections') &&
              userTableNames.contains('translation_history') &&
+             userTableNames.contains('user_settings') &&
+             userTableNames.contains('user_translation_edits') &&
              userTableNames.contains('context_cache');
     } catch (e) {
       return false;
