@@ -5,7 +5,7 @@ void main() {
   group('TranslationContext Tests', () {
     
     test('should create context with required parameters', () {
-      const context = TranslationContext(
+    final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         debugMode: false,
@@ -18,7 +18,7 @@ void main() {
     });
 
     test('should generate language pair correctly', () {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'fr',
         targetLanguage: 'de',
         debugMode: false,
@@ -31,13 +31,13 @@ void main() {
     });
 
     test('should handle debug mode', () {
-      const debugContext = TranslationContext(
+      final debugContext = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         debugMode: true,
       );
       
-      const prodContext = TranslationContext(
+      final prodContext = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         debugMode: false,
@@ -50,7 +50,7 @@ void main() {
     });
 
     test('should support additional metadata', () {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         debugMode: false,
@@ -63,12 +63,12 @@ void main() {
     });
 
     test('should check language pair support', () {
-      const supportedContext = TranslationContext(
+      final supportedContext = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
       );
       
-      const unsupportedContext = TranslationContext(
+      final unsupportedContext = TranslationContext(
         sourceLanguage: 'zh',
         targetLanguage: 'hi',
       );
@@ -78,19 +78,19 @@ void main() {
     });
 
     test('should handle translation modes', () {
-      const fastContext = TranslationContext(
+      final fastContext = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         mode: TranslationMode.fast,
       );
       
-      const qualityContext = TranslationContext(
+      final qualityContext = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         mode: TranslationMode.quality,
       );
       
-      const detailedContext = TranslationContext(
+      final detailedContext = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         mode: TranslationMode.detailed,
@@ -106,7 +106,7 @@ void main() {
     });
 
     test('should handle confidence threshold', () {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         minConfidence: 0.8,
@@ -116,7 +116,7 @@ void main() {
     });
 
     test('should handle processing timeout', () {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         maxProcessingTimeMs: 10000,
@@ -126,7 +126,7 @@ void main() {
     });
 
     test('should handle exclude words', () {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         excludeWords: {'password', 'secret'},
@@ -138,7 +138,7 @@ void main() {
     });
 
     test('should handle force translations', () {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         forceTranslations: {'hello': 'привет', 'world': 'мир'},
@@ -150,14 +150,14 @@ void main() {
     });
 
     test('should support cache configuration', () {
-      const cacheContext = TranslationContext(
+      final cacheContext = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         useCache: true,
         saveToCache: true,
       );
       
-      const noCacheContext = TranslationContext(
+      final noCacheContext = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         useCache: false,
@@ -171,7 +171,7 @@ void main() {
     });
 
     test('should be immutable', () {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         debugMode: false,

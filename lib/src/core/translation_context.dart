@@ -122,10 +122,22 @@ class TranslationContext {
   /// Идентификатор сессии
   final String? sessionId;
   
-  /// Метаданные перевода
-  final Map<String, dynamic> metadata;
+  /// Токены исходного текста (для слоев)
+  List<String>? tokens;
   
-  const TranslationContext({
+  /// Исходный текст для обработки
+  String? originalText;
+  
+  /// Переведенный текст (изменяется слоями)
+  String? translatedText;
+  
+  /// Метаданные перевода (изменяемые)
+  final Map<String, dynamic> _metadata;
+  
+  /// Метаданные перевода (только для чтения)
+  Map<String, dynamic> get metadata => Map.unmodifiable(_metadata);
+  
+  TranslationContext({
     required this.sourceLanguage,
     required this.targetLanguage,
     this.mode = TranslationMode.standard,
@@ -142,8 +154,11 @@ class TranslationContext {
     this.contextText,
     this.userId,
     this.sessionId,
-    this.metadata = const {},
-  });
+    this.tokens,
+    this.originalText,
+    this.translatedText,
+    Map<String, dynamic> metadata = const {},
+  }) : _metadata = Map<String, dynamic>.from(metadata);
   
   /// языковая пара в формате "en-ru"
   String get languagePair => '$sourceLanguage-$targetLanguage';
@@ -192,6 +207,32 @@ class TranslationContext {
     return mode == TranslationMode.quality;
   }
   
+  /// Установить метаданные
+  void setMetadata(String key, dynamic value) {
+    _metadata[key] = value;
+  }
+  
+  /// Получить метаданные
+  T? getMetadata<T>(String key) {
+    final value = _metadata[key];
+    return value is T ? value : null;
+  }
+  
+  /// Проверить наличие метаданных
+  bool hasMetadata(String key) {
+    return _metadata.containsKey(key);
+  }
+  
+  /// Удалить метаданные
+  void removeMetadata(String key) {
+    _metadata.remove(key);
+  }
+  
+  /// Очистить все метаданные
+  void clearMetadata() {
+    _metadata.clear();
+  }
+  
   /// Создать копию с изменениями
   TranslationContext copyWith({
     String? sourceLanguage,
@@ -210,6 +251,9 @@ class TranslationContext {
     String? contextText,
     String? userId,
     String? sessionId,
+    List<String>? tokens,
+    String? originalText,
+    String? translatedText,
     Map<String, dynamic>? metadata,
   }) {
     return TranslationContext(
@@ -229,7 +273,10 @@ class TranslationContext {
       contextText: contextText ?? this.contextText,
       userId: userId ?? this.userId,
       sessionId: sessionId ?? this.sessionId,
-      metadata: metadata ?? this.metadata,
+      tokens: tokens ?? this.tokens,
+      originalText: originalText ?? this.originalText,
+      translatedText: translatedText ?? this.translatedText,
+      metadata: metadata ?? _metadata,
     );
   }
   
@@ -252,7 +299,7 @@ class TranslationContext {
       'context_text': contextText,
       'user_id': userId,
       'session_id': sessionId,
-      'metadata': metadata,
+      'metadata': _metadata,
       'language_pair': languagePair,
     };
   }

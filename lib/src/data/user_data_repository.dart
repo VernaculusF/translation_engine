@@ -1,4 +1,5 @@
 
+import 'dart:convert';
 import 'base_repository.dart';
 import '../models/translation_result.dart';
 import 'database_types.dart';
@@ -60,9 +61,7 @@ class TranslationHistoryEntry {
       processingTimeMs: map['processing_time_ms'] as int,
       timestamp: DateTime.fromMillisecondsSinceEpoch(map['timestamp'] as int),
       sessionId: map['session_id'] as String?,
-      metadata: map['metadata'] != null 
-        ? Map<String, dynamic>.from(map['metadata'] as Map)
-        : null,
+      metadata: _parseMetadata(map['metadata']),
     );
   }
   
@@ -77,8 +76,31 @@ class TranslationHistoryEntry {
       'processing_time_ms': processingTimeMs,
       'timestamp': timestamp.millisecondsSinceEpoch,
       'session_id': sessionId,
-      'metadata': metadata,
+      'metadata': metadata != null ? jsonEncode(metadata) : null,
     };
+  }
+  
+  /// Парсинг metadata из различных форматов
+  static Map<String, dynamic>? _parseMetadata(dynamic metadata) {
+    if (metadata == null) return null;
+    
+    if (metadata is Map<String, dynamic>) {
+      return metadata;
+    }
+    
+    if (metadata is String) {
+      try {
+        final decoded = jsonDecode(metadata);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
+      } catch (e) {
+        // Если не удалось декодировать JSON, возвращаем null
+        return null;
+      }
+    }
+    
+    return null;
   }
   
   @override

@@ -1,5 +1,13 @@
 **ОБНОВЛЁННЫЙ TODO СПИСОК РЕАЛИЗАЦИИ**
 
+**🗄️ [2025-01-07] СХЕМА БД ПОЛНОСТЬЮ ОБНОВЛЕНА:**
+- ✅ Исправлены названия колонок (`source_*`/`target_*` вместо сокращений)
+- ✅ Добавлены недостающие колонки (`part_of_speech`, `definition`, `category`, `context`)
+- ✅ Восстановлена таблица `user_corrections`
+- ✅ Исправлена обработка JSON метаданных
+- ✅ Обновлены 54 ключевых теста
+- ✅ Создана подробная документация DATABASE_SCHEMA.md (285 строк)
+
 ---
 
 ## 📁 **ФАЙЛОВАЯ СИСТЕМА**
@@ -45,55 +53,66 @@ lib/
 
 ## 🗃️ **СТРУКТУРА БАЗ ДАННЫХ**
 
-### **DICTIONARIES.DB:**
+### **DICTIONARIES.DB:** ✅ **СХЕМА ОБНОВЛЕНА (Версия 1.0)**
 ```sql
 CREATE TABLE schema_info (version INTEGER)
 CREATE TABLE words (
   id INTEGER PRIMARY KEY, 
-  word TEXT NOT NULL CHECK(length(word) > 0), 
-  translation TEXT NOT NULL CHECK(length(translation) > 0), 
-  lang_pair TEXT NOT NULL CHECK(length(lang_pair) > 0), 
-  frequency INTEGER DEFAULT 0
+  source_word TEXT NOT NULL CHECK(length(source_word) > 0), 
+  target_word TEXT NOT NULL CHECK(length(target_word) > 0), 
+  language_pair TEXT NOT NULL CHECK(length(language_pair) > 0), 
+  part_of_speech TEXT,
+  definition TEXT,
+  frequency INTEGER DEFAULT 0,
+  created_at INTEGER,
+  updated_at INTEGER
 )
 CREATE TABLE word_cache (
-  word TEXT PRIMARY KEY NOT NULL CHECK(length(word) > 0), 
-  translation TEXT NOT NULL, 
-  lang_pair TEXT NOT NULL, 
+  source_word TEXT PRIMARY KEY NOT NULL CHECK(length(source_word) > 0), 
+  target_word TEXT NOT NULL, 
+  language_pair TEXT NOT NULL, 
   last_used INTEGER NOT NULL
 )
-CREATE INDEX idx_word_lang ON words(word, lang_pair)
+CREATE INDEX idx_word_lang ON words(source_word, language_pair)
 CREATE INDEX idx_frequency ON words(frequency)
 ```
 
-### **PHRASES.DB:**
+### **PHRASES.DB:** ✅ **СХЕМА ОБНОВЛЕНА (Версия 1.0)**
 ```sql
 CREATE TABLE schema_info (version INTEGER)
 CREATE TABLE phrases (
   id INTEGER PRIMARY KEY, 
-  phrase TEXT NOT NULL CHECK(length(phrase) > 0), 
-  translation TEXT NOT NULL CHECK(length(translation) > 0), 
-  lang_pair TEXT NOT NULL CHECK(length(lang_pair) > 0), 
-  usage_count INTEGER DEFAULT 0
+  source_phrase TEXT NOT NULL CHECK(length(source_phrase) > 0), 
+  target_phrase TEXT NOT NULL CHECK(length(target_phrase) > 0), 
+  language_pair TEXT NOT NULL CHECK(length(language_pair) > 0), 
+  category TEXT,
+  context TEXT,
+  frequency INTEGER DEFAULT 0,
+  confidence INTEGER,
+  usage_count INTEGER DEFAULT 0,
+  created_at INTEGER,
+  updated_at INTEGER
 )
 CREATE TABLE phrase_cache (
-  phrase TEXT PRIMARY KEY NOT NULL CHECK(length(phrase) > 0), 
-  translation TEXT NOT NULL, 
-  lang_pair TEXT NOT NULL, 
+  source_phrase TEXT PRIMARY KEY NOT NULL CHECK(length(source_phrase) > 0), 
+  target_phrase TEXT NOT NULL, 
+  language_pair TEXT NOT NULL, 
   last_used INTEGER NOT NULL
 )
-CREATE INDEX idx_phrase_lang ON phrases(phrase, lang_pair)
+CREATE INDEX idx_phrase_lang ON phrases(source_phrase, language_pair)
 ```
 
 ---
 
 ## ✅ **TODO СПИСОК РЕАЛИЗАЦИИ**
 
-### **1. СИСТЕМА ДАННЫХ И КЭШИРОВАНИЯ**
-- Реализовать DatabaseManager для работы с SQLite базами - инициализация, миграции, версионирование
-- Создать DictionaryRepository с in-memory кэшем частотных слов - кэш 10k самых частых слов в памяти
-- Создать PhraseRepository с in-memory кэшем частых фраз - кэш 5k самых частых фраз в памяти
-- Реализовать CacheManager для управления кэшем - LRU стратегия, автоматическое обновление при изменении БД
-- Реализовать IntegrityChecker - проверка целостности таблиц и индексов при инициализации
+### **1. СИСТЕМА ДАННЫХ И КЭШИРОВАНИЯ** ✅ **ЗАВЕРШЕНО + СХЕМА ОБНОВЛЕНА**
+- ✅ Реализовать DatabaseManager с обновленной схемой БД - правильная логика `source_*`/`target_*`
+- ✅ Создать DictionaryRepository с LRU кэшем - 10k самых частых слов, поддержка `part_of_speech`/`definition`
+- ✅ Создать PhraseRepository с категоризацией - 5k фраз, поддержка `category`/`context`/`confidence`
+- ✅ Реализовать CacheManager с LRU стратегией - 31 тест, автоматическая очистка по TTL
+- ✅ Усовершенствовать UserDataRepository - JSON метаданные, `user_corrections`, `user_translation_edits`
+- ⚠️ IntegrityChecker - ожидает реализации (низкий приоритет)
 
 ### **2. СИСТЕМА ИСКЛЮЧЕНИЙ И УТИЛИТ**
 - Создать exceptions.dart с пользовательскими исключениями - DatabaseInitError, InvalidLangPairError, CacheError, TranslationError

@@ -94,21 +94,21 @@ void main() {
         
         // Вставить запись со структурой, совместимой с реальной БД
         await dictDb.execute(
-          'INSERT INTO words (word, translation, lang_pair, frequency) VALUES (?, ?, ?, ?)',
+          'INSERT INTO words (source_word, target_word, language_pair, frequency) VALUES (?, ?, ?, ?)',
           ['hello', 'привет', 'en-ru', 5],
         );
 
         // Получить запись
         final results = await dictDb.query(
           'words',
-          where: 'word = ? AND lang_pair = ?',
+          where: 'source_word = ? AND language_pair = ?',
           whereArgs: ['hello', 'en-ru'],
         );
 
         expect(results.length, equals(1));
-        expect(results.first['word'], equals('hello'));
-        expect(results.first['translation'], equals('привет'));
-        expect(results.first['lang_pair'], equals('en-ru'));
+        expect(results.first['source_word'], equals('hello'));
+        expect(results.first['target_word'], equals('привет'));
+        expect(results.first['language_pair'], equals('en-ru'));
         expect(results.first['frequency'], equals(5));
       });
 
@@ -118,20 +118,20 @@ void main() {
         // Добавить в кэш
         final now = DateTime.now().millisecondsSinceEpoch;
         await dictDb.execute(
-          'INSERT INTO word_cache (word, translation, lang_pair, last_used) VALUES (?, ?, ?, ?)',
+          'INSERT INTO word_cache (source_word, target_word, language_pair, last_used) VALUES (?, ?, ?, ?)',
           ['test', 'тест', 'en-ru', now],
         );
 
         // Получить из кэша
         final cached = await dictDb.query(
           'word_cache',
-          where: 'word = ? AND lang_pair = ?',
+          where: 'source_word = ? AND language_pair = ?',
           whereArgs: ['test', 'en-ru'],
         );
 
         expect(cached.length, equals(1));
-        expect(cached.first['word'], equals('test'));
-        expect(cached.first['translation'], equals('тест'));
+        expect(cached.first['source_word'], equals('test'));
+        expect(cached.first['target_word'], equals('тест'));
       });
     });
 
@@ -141,21 +141,21 @@ void main() {
         
         // Вставить фразу
         await phrasesDb.execute(
-          'INSERT INTO phrases (phrase, translation, lang_pair, usage_count) VALUES (?, ?, ?, ?)',
+          'INSERT INTO phrases (source_phrase, target_phrase, language_pair, usage_count) VALUES (?, ?, ?, ?)',
           ['good morning', 'доброе утро', 'en-ru', 3],
         );
 
         // Получить фразу
         final results = await phrasesDb.query(
           'phrases',
-          where: 'phrase = ? AND lang_pair = ?',
+          where: 'source_phrase = ? AND language_pair = ?',
           whereArgs: ['good morning', 'en-ru'],
         );
 
         expect(results.length, equals(1));
-        expect(results.first['phrase'], equals('good morning'));
-        expect(results.first['translation'], equals('доброе утро'));
-        expect(results.first['lang_pair'], equals('en-ru'));
+        expect(results.first['source_phrase'], equals('good morning'));
+        expect(results.first['target_phrase'], equals('доброе утро'));
+        expect(results.first['language_pair'], equals('en-ru'));
         expect(results.first['usage_count'], equals(3));
       });
 
@@ -165,20 +165,20 @@ void main() {
         // Добавить в кэш
         final now = DateTime.now().millisecondsSinceEpoch;
         await phrasesDb.execute(
-          'INSERT INTO phrase_cache (phrase, translation, lang_pair, last_used) VALUES (?, ?, ?, ?)',
+          'INSERT INTO phrase_cache (source_phrase, target_phrase, language_pair, last_used) VALUES (?, ?, ?, ?)',
           ['test phrase', 'тестовая фраза', 'en-ru', now],
         );
 
         // Получить из кэша
         final cached = await phrasesDb.query(
           'phrase_cache',
-          where: 'phrase = ? AND lang_pair = ?',
+          where: 'source_phrase = ? AND language_pair = ?',
           whereArgs: ['test phrase', 'en-ru'],
         );
 
         expect(cached.length, equals(1));
-        expect(cached.first['phrase'], equals('test phrase'));
-        expect(cached.first['translation'], equals('тестовая фраза'));
+        expect(cached.first['source_phrase'], equals('test phrase'));
+        expect(cached.first['target_phrase'], equals('тестовая фраза'));
       });
     });
 
@@ -190,21 +190,21 @@ void main() {
         
         // Добавить в историю
         await userDb.execute(
-          'INSERT INTO translation_history (original_text, translated_text, lang_pair, timestamp) VALUES (?, ?, ?, ?)',
-          ['hello world', 'привет мир', 'en-ru', now],
+          'INSERT INTO translation_history (original_text, translated_text, language_pair, confidence, processing_time_ms, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+          ['hello world', 'привет мир', 'en-ru', 0.95, 100, now],
         );
 
         // Получить из истории
         final history = await userDb.query(
           'translation_history',
-          where: 'original_text = ? AND lang_pair = ?',
+          where: 'original_text = ? AND language_pair = ?',
           whereArgs: ['hello world', 'en-ru'],
         );
 
         expect(history.length, equals(1));
         expect(history.first['original_text'], equals('hello world'));
         expect(history.first['translated_text'], equals('привет мир'));
-        expect(history.first['lang_pair'], equals('en-ru'));
+        expect(history.first['language_pair'], equals('en-ru'));
       });
 
       test('should handle user corrections', () async {
@@ -310,24 +310,24 @@ void main() {
 
         // Добавить записи во все базы данных
         await dictDb.execute(
-          'INSERT INTO words (word, translation, lang_pair, frequency) VALUES (?, ?, ?, ?)',
+          'INSERT INTO words (source_word, target_word, language_pair, frequency) VALUES (?, ?, ?, ?)',
           ['integration', 'интеграция', 'en-ru', 1],
         );
 
         await phrasesDb.execute(
-          'INSERT INTO phrases (phrase, translation, lang_pair, usage_count) VALUES (?, ?, ?, ?)',
+          'INSERT INTO phrases (source_phrase, target_phrase, language_pair, usage_count) VALUES (?, ?, ?, ?)',
           ['integration test', 'интеграционный тест', 'en-ru', 1],
         );
 
         await userDb.execute(
-          'INSERT INTO translation_history (original_text, translated_text, lang_pair, timestamp) VALUES (?, ?, ?, ?)',
-          ['integration test complete', 'интеграционный тест завершен', 'en-ru', now],
+          'INSERT INTO translation_history (original_text, translated_text, language_pair, confidence, processing_time_ms, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+          ['integration test complete', 'интеграционный тест завершен', 'en-ru', 0.95, 100, now],
         );
 
         // Проверить, что все записи сохранились
-        final dictResults = await dictDb.query('words', where: 'word = ?', whereArgs: ['integration']);
-        final phraseResults = await phrasesDb.query('phrases', where: 'phrase = ?', whereArgs: ['integration test']);
-        final historyResults = await userDb.query('translation_history', where: 'lang_pair = ?', whereArgs: ['en-ru']);
+        final dictResults = await dictDb.query('words', where: 'source_word = ?', whereArgs: ['integration']);
+        final phraseResults = await phrasesDb.query('phrases', where: 'source_phrase = ?', whereArgs: ['integration test']);
+        final historyResults = await userDb.query('translation_history', where: 'language_pair = ?', whereArgs: ['en-ru']);
 
         expect(dictResults.length, equals(1));
         expect(phraseResults.length, equals(1));
@@ -349,7 +349,7 @@ void main() {
         for (int i = 0; i < 5; i++) {
           futures.add(
             dictDb.execute(
-              'INSERT INTO words (word, translation, lang_pair, frequency) VALUES (?, ?, ?, ?)',
+              'INSERT INTO words (source_word, target_word, language_pair, frequency) VALUES (?, ?, ?, ?)',
               ['concurrent$i', 'параллель$i', 'en-ru', i],
             )
           );
@@ -358,10 +358,10 @@ void main() {
         await Future.wait(futures);
 
         // Проверить, что все записи сохранились
-        final results = await dictDb.query('words', where: 'lang_pair = ?', whereArgs: ['en-ru']);
+        final results = await dictDb.query('words', where: 'language_pair = ?', whereArgs: ['en-ru']);
         expect(results.length, greaterThanOrEqualTo(5));
         
-        final concurrentWords = results.where((r) => (r['word'] as String).startsWith('concurrent')).toList();
+        final concurrentWords = results.where((r) => (r['source_word'] as String).startsWith('concurrent')).toList();
         expect(concurrentWords.length, equals(5));
       });
 

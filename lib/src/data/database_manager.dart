@@ -71,9 +71,9 @@ class DatabaseManager {
         language_pair TEXT NOT NULL CHECK(length(language_pair) > 0),
         part_of_speech TEXT,
         definition TEXT,
-        frequency INTEGER DEFAULT 1,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        frequency INTEGER DEFAULT 0,
+        created_at INTEGER,
+        updated_at INTEGER
       )
     ''');
 
@@ -142,9 +142,11 @@ class DatabaseManager {
         language_pair TEXT NOT NULL CHECK(length(language_pair) > 0),
         category TEXT,
         context TEXT,
-        usage_count INTEGER DEFAULT 1,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        frequency INTEGER DEFAULT 0,
+        confidence INTEGER,
+        usage_count INTEGER DEFAULT 0,
+        created_at INTEGER,
+        updated_at INTEGER
       )
     ''');
 
@@ -218,11 +220,24 @@ class DatabaseManager {
       )
     ''');
 
+
+    // Таблица для пользовательских исправлений
+    await db.execute('''
+      CREATE TABLE user_corrections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        original_text TEXT NOT NULL,
+        corrected_translation TEXT NOT NULL,
+        lang_pair TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
     // Таблица для пользовательских настроек
     await db.execute('''
       CREATE TABLE user_settings (
         setting_key TEXT PRIMARY KEY,
         setting_value TEXT NOT NULL,
+        description TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )
@@ -259,6 +274,7 @@ class DatabaseManager {
     await db.execute('CREATE INDEX idx_history_timestamp ON translation_history(timestamp)');
     await db.execute('CREATE INDEX idx_context_key ON context_cache(context_key)');
     await db.execute('CREATE INDEX idx_user_edits_lang ON user_translation_edits(language_pair)');
+    await db.execute('CREATE INDEX idx_user_corrections_lang ON user_corrections(lang_pair)');
   }
 
   Future<void> close() async {
@@ -335,6 +351,7 @@ class DatabaseManager {
              phraseTableNames.contains('phrase_cache') &&
              userTableNames.contains('schema_info') &&
              userTableNames.contains('translation_history') &&
+             userTableNames.contains('user_corrections') &&
              userTableNames.contains('user_settings') &&
              userTableNames.contains('user_translation_edits') &&
              userTableNames.contains('context_cache');

@@ -81,7 +81,7 @@ void main() {
     });
 
     test('should handle text processing with no layers', () async {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         debugMode: false,
@@ -96,7 +96,7 @@ void main() {
     });
 
     test('should track processing statistics', () async {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         debugMode: false,
@@ -110,7 +110,7 @@ void main() {
     });
 
     test('should not allow concurrent processing', () async {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         debugMode: false,
@@ -135,7 +135,7 @@ void main() {
     });
 
     test('should complete pipeline state after processing', () async {
-      const context = TranslationContext(
+      final context = TranslationContext(
         sourceLanguage: 'en',
         targetLanguage: 'ru',
         debugMode: false,

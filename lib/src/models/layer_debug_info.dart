@@ -30,6 +30,18 @@ class LayerDebugInfo {
   /// Количество промахов кэша
   final int cacheMisses;
   
+  /// Входной текст для слоя
+  final String? inputText;
+  
+  /// Выходной текст после обработки слоем
+  final String? outputText;
+  
+  /// Был ли текст изменен слоем
+  final bool wasModified;
+  
+  /// Дополнительная информация о работе слоя
+  final Map<String, dynamic> additionalInfo;
+  
   /// Дополнительные отладочные данные
   final Map<String, dynamic> debugData;
   
@@ -42,6 +54,10 @@ class LayerDebugInfo {
   const LayerDebugInfo({
     required this.layerName,
     required this.processingTimeMs,
+    this.inputText,
+    this.outputText,
+    this.wasModified = false,
+    this.additionalInfo = const {},
     this.isSuccessful = true,
     this.hasError = false,
     this.errorMessage,
@@ -59,6 +75,10 @@ class LayerDebugInfo {
   factory LayerDebugInfo.success({
     required String layerName,
     required int processingTimeMs,
+    String? inputText,
+    String? outputText,
+    bool wasModified = false,
+    Map<String, dynamic> additionalInfo = const {},
     int itemsProcessed = 0,
     int modificationsCount = 0,
     double impactLevel = 0.0,
@@ -71,6 +91,10 @@ class LayerDebugInfo {
     return LayerDebugInfo(
       layerName: layerName,
       processingTimeMs: processingTimeMs,
+      inputText: inputText,
+      outputText: outputText,
+      wasModified: wasModified,
+      additionalInfo: additionalInfo,
       isSuccessful: true,
       hasError: false,
       errorMessage: null,
@@ -90,6 +114,10 @@ class LayerDebugInfo {
     required String layerName,
     required int processingTimeMs,
     required String errorMessage,
+    String? inputText,
+    String? outputText,
+    bool wasModified = false,
+    Map<String, dynamic> additionalInfo = const {},
     int itemsProcessed = 0,
     int modificationsCount = 0,
     Map<String, dynamic> debugData = const {},
@@ -98,6 +126,10 @@ class LayerDebugInfo {
     return LayerDebugInfo(
       layerName: layerName,
       processingTimeMs: processingTimeMs,
+      inputText: inputText,
+      outputText: outputText,
+      wasModified: wasModified,
+      additionalInfo: additionalInfo,
       isSuccessful: false,
       hasError: true,
       errorMessage: errorMessage,
@@ -176,6 +208,10 @@ class LayerDebugInfo {
   LayerDebugInfo copyWith({
     String? layerName,
     int? processingTimeMs,
+    String? inputText,
+    String? outputText,
+    bool? wasModified,
+    Map<String, dynamic>? additionalInfo,
     bool? isSuccessful,
     bool? hasError,
     String? errorMessage,
@@ -191,6 +227,10 @@ class LayerDebugInfo {
     return LayerDebugInfo(
       layerName: layerName ?? this.layerName,
       processingTimeMs: processingTimeMs ?? this.processingTimeMs,
+      inputText: inputText ?? this.inputText,
+      outputText: outputText ?? this.outputText,
+      wasModified: wasModified ?? this.wasModified,
+      additionalInfo: additionalInfo ?? this.additionalInfo,
       isSuccessful: isSuccessful ?? this.isSuccessful,
       hasError: hasError ?? this.hasError,
       errorMessage: errorMessage ?? this.errorMessage,
