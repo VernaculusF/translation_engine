@@ -246,5 +246,7 @@
 #### Добавлено в рамках Этапа 4:
 - ✅ E2E тесты для пайплайна (test/e2e/pipeline_e2e_test.dart)
 - ✅ Базовые performance-бенчмарки (test/benchmarks/perf_benchmarks_test.dart)
+- ✅ Генератор performance-отчета (test/benchmarks/perf_report_test.dart → reports/performance/*.json)
 - ✅ Адаптеры слоев для автоподключения к pipeline (lib/src/core/layer_adapters.dart)
 - ✅ Параметр registerDefaultLayers для гибкости unit-тестов
+- ✅ Примеры использования (samples/basic_usage, samples/data_population)

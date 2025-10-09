@@ -1,4 +1,65 @@
-# Translation Engine - Flutter Library
+# Translation Engine
+
+A modular translation pipeline library for Dart/Flutter with layered processing, data repositories, and rich debug info.
+
+## Quick start
+
+- Add this repository as a dependency or clone locally.
+- Make sure you have Flutter installed.
+
+### Minimal example (engine)
+
+```dart path=null start=null
+import 'package:translation_engine/src/core/translation_engine.dart';
+import 'package:translation_engine/src/core/translation_context.dart';
+
+Future<void> main() async {
+  final engine = TranslationEngine.instance(reset: true);
+  await engine.initialize(customDatabasePath: '/tmp/te_db');
+
+  final result = await engine.translate(
+    'Hello,   world!!!',
+    sourceLanguage: 'en',
+    targetLanguage: 'en',
+    context: TranslationContext(sourceLanguage: 'en', targetLanguage: 'en', debugMode: true),
+  );
+
+  print(result.translatedText); // Cleaned and formatted
+  await engine.dispose();
+}
+```
+
+### Run samples
+
+- Basic usage:
+  - `dart run samples/basic_usage/main.dart`
+
+- Populate dictionary/phrases then translate:
+  - `dart run samples/data_population/populate_and_translate.dart`
+
+### Tests
+
+- Run analyzer: `flutter analyze`
+- Run tests: `flutter test`
+
+## Performance
+
+- Benchmarks: `flutter test test/benchmarks/perf_benchmarks_test.dart`
+- Generate JSON report: `flutter test test/benchmarks/perf_report_test.dart`
+  - Output in `reports/performance/perf_report_*.json`
+
+## Architecture
+
+- Core
+  - TranslationEngine – high-level API
+  - TranslationPipeline – orchestrates layers
+  - TranslationContext – processing context
+- Layers (adapters wired by default in engine)
+  - PreProcessing → PhraseLookup → Dictionary → Grammar → WordOrder → PostProcessing
+- Data layer
+  - DictionaryRepository, PhraseRepository, UserDataRepository
+
+See CHECKLISTS/DEVELOPMENT_STAGES.md for roadmap and current status.
 
 **Закрытая коммерческая библиотека для оффлайн-перевода**
 

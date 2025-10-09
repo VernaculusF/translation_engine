@@ -12,6 +12,20 @@
 - Performance Benchmarks
 - End-to-End Integration Tests
 
+## [0.3.2] - 2024-10-09 - 📦 **Samples & Performance Reporting**
+
+### Добавлено
+- Примеры использования: samples/basic_usage, samples/data_population
+- Генератор performance-отчета: test/benchmarks/perf_report_test.dart (вывод в reports/performance/*.json)
+
+### Улучшено
+- README: быстрый старт, запуск samples, performance
+- Development Stages: отражены E2E, бенчмарки, отчеты, samples
+
+### Статус
+- Все тесты проходят: flutter test (241 тест)
+- Анализ: flutter analyze — 0 ошибок
+
 ## [0.3.1] - 2024-10-09 - ✅ **Layer Tests Completed & Integration Tests Stabilized**
 
 ### Добавлено
