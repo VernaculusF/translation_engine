@@ -61,6 +61,8 @@ Future<void> main() async {
 
 See CHECKLISTS/DEVELOPMENT_STAGES.md for roadmap and current status.
 
+Full guide: docs/USAGE_AND_DEV_GUIDE.md
+
 **Закрытая коммерческая библиотека для оффлайн-перевода**
 
 ---
