@@ -4,8 +4,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart';
 import '../utils/exceptions.dart';
 import 'database_types.dart';
+import 'database_manager_base.dart';
 
-class DatabaseManager {
+class DatabaseManager implements DatabaseManagerBase {
   static final DatabaseManager _instance = DatabaseManager._internal();
   factory DatabaseManager({String? customDatabasePath}) => _instance.._customPath = customDatabasePath;
   DatabaseManager._internal();
@@ -293,6 +294,7 @@ class DatabaseManager {
   }
   
   /// Получение соединения с базой данных по типу
+  @override
   Future<DatabaseConnection> getConnection(DatabaseType type) async {
     switch (type) {
       case DatabaseType.dictionaries:
@@ -308,6 +310,7 @@ class DatabaseManager {
   }
 
   /// Закрытие соединения с базой данных
+  @override
   Future<void> closeConnection(DatabaseConnection connection) async {
     // В текущей реализации мы не закрываем соединения индивидуально,
     // так как они переиспользуются через singleton паттерн
@@ -315,12 +318,14 @@ class DatabaseManager {
   }
 
   /// Метод для полной очистки (для тестов)
+  @override
   Future<void> reset() async {
     await close();
     // Не сбрасываем _customPath, так как это singleton
   }
 
   // Метод для проверки целостности всех баз данных
+  @override
   Future<bool> checkAllDatabasesIntegrity() async {
     try {
       final dictDb = await database;

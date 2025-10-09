@@ -1,7 +1,8 @@
 name: translation_engine
-description: "Translate library for flutter."
+description: "Offline translation engine for Flutter with layered processing, dictionary management, and phrase translation support."
 version: 0.0.1
-homepage:
+homepage: https://github.com/VernaculusF/translation_engine
+repository: https://github.com/VernaculusF/translation_engine
 
 environment:
   sdk: ^3.9.2
@@ -12,13 +13,14 @@ dependencies:
     sdk: flutter
   path_provider: ^2.1.5
   sqflite: ^2.4.2
-  path: ^1.8.3 
+  path: ^1.8.3
+  sqflite_common_ffi: ^2.3.1
+  http: ^1.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
-  sqflite_common_ffi: ^2.3.1
   mockito: ^5.4.0
   test: ^1.24.6
 flutter:

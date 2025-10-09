@@ -136,8 +136,36 @@ All schemas are created automatically by DatabaseManager.
 
 ## 5. Populating Databases
 
+### 5.1 Automatic Data Download (Recommended)
+
+Use the new `db` command to automatically download and import translation data:
+
+- Download all available languages:
+  `dart run bin/translate_engine.dart db`
+  
+- Download specific language pair:
+  `dart run bin/translate_engine.dart db --lang=en-ru`
+  
+- List available languages:
+  `dart run bin/translate_engine.dart db --list`
+  
+- Dry run (see what would be downloaded):
+  `dart run bin/translate_engine.dart db --dry-run`
+  
+- Custom database directory:
+  `dart run bin/translate_engine.dart db --db=./my_data --lang=en-ru`
+
+### 5.2 Manual Import from Local Files
+
 Dictionary importer
-- CLI: `dart run bin/import_dictionary.dart --file=path/to.csv --db=/path/to/dbdir --lang=en-ru --format=csv --delimiter=,`
+- CLI (FFI, no Flutter UI deps):
+  - Windows PowerShell examples:
+    - CSV:
+      `dart run bin/translate_engine.dart import --db .\data --file .\datasets\dict.csv --format csv --lang en-ru --delimiter ,`
+    - JSON:
+      `dart run bin/translate_engine.dart import --db .\data --file .\datasets\dict.json --format json --lang en-ru`
+    - JSONL:
+      `dart run bin/translate_engine.dart import --db .\data --file .\datasets\dict.jsonl --format jsonl --lang en-ru`
 - Formats: csv (header preferred), json (array), jsonl (one JSON object per line)
 - Programmatic usage:
 ```dart path=null start=null

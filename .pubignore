@@ -1,0 +1,36 @@
+# Исключить из pub.dev релиза
+
+# Документация разработки
+docs/
+CHECKLISTS/
+
+# Образцы данных (не нужны в релизе)
+sample_data/
+
+# Отчеты и бенчмарки  
+reports/
+
+# Инструменты разработки
+fix_layers.py
+DATA_REPOSITORY_SETUP.md
+FINAL_DATA_SETUP_INSTRUCTIONS.md
+
+# Тестовые данные
+test/
+
+# Старые CLI файлы (оставляем только новые)
+bin/import_dictionary.dart
+bin/import_dictionary_cli.dart
+
+# Git и IDE файлы
+.git/
+.vscode/
+.idea/
+*.iml
+
+# Временные файлы
+*.tmp
+*.log
+
+# Файлы сборки
+build/

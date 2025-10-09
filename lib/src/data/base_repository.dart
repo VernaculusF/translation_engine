@@ -1,13 +1,13 @@
 import '../utils/cache_manager.dart';
-import 'database_manager.dart';
+import 'database_manager_base.dart';
 import 'database_types.dart';
 /// Базовый абстрактный класс для всех репозиториев
 /// 
 /// Предоставляет общие методы для работы с базой данных и кэшем.
 /// Все конкретные репозитории должны наследоваться от этого класса.
 abstract class BaseRepository {
-  /// Менеджер базы данных
-  final DatabaseManager databaseManager;
+  /// Менеджер базы данных (через абстракцию для поддержки Flutter/CLI)
+  final DatabaseManagerBase databaseManager;
   
   /// Менеджер кэша
   final CacheManager cacheManager;

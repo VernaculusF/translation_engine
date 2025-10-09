@@ -21,14 +21,69 @@
 ## 2. Как добавить языковые данные
 
 ### Импорт словарей (CLI)
-- Запуск:
+- Запуск (FFI CLI, без Flutter-зависимостей):
 ```
 flutter pub get
-dart run bin/import_dictionary.dart --file=./data/en-ru.csv --db=./.localdb --lang=en-ru --format=csv --delimiter=,
+# Примеры PowerShell (Windows):
+# CSV
+dart run bin/import_dictionary_cli.dart --db .\data --file .\datasets\dict.csv --format csv --lang en-ru --delimiter ,
+# JSON (массив объектов)
+dart run bin/import_dictionary_cli.dart --db .\data --file .\datasets\dict.json --format json --lang en-ru
+# JSONL (1 JSON-объект на строку)
+dart run bin/import_dictionary_cli.dart --db .\data --file .\datasets\dict.jsonl --format jsonl --lang en-ru
 ```
 - Поддерживаемые форматы: CSV (желателен заголовок), JSON (массив), JSONL (по объекту на строку).
 - Языковая пара:
   - Можно указать флагом `--lang`, либо колонкой `language_pair` в файле.
+
+### Где взять датасеты (источники)
+Ниже перечислены открытые источники, откуда можно получить двуязычные пары слов/фраз. Всегда проверяйте лицензию и условия использования для вашего кейса:
+- OPUS / OPUS-MT (Tatoeba, OpenSubtitles, etc.) — параллельные корпуса, можно извлечь частотные пары слов/фраз из сегментов.
+- Wiktionary (Викисловарь) — открытые словарные данные; доступны дампы, можно конвертировать в CSV/JSON.
+- Tatoeba — коллекция предложений и переводов, хорошо подходит для фраз.
+- OpenSubtitles (переводные субтитры) — частотные выражения разговорной речи.
+- CC BY ресурсы вузов/сообществ (лексиконы, частотные списки).
+- Собственные корпоративные параллельные тексты (соблюдая права и конфиденциальность).
+
+### Требуемый формат входных файлов
+Импортер поддерживает гибкую схему, но рекомендуемый минимальный набор полей:
+
+- CSV (с заголовком):
+  - Обязательные: source_word, target_word
+  - Рекомендуемые: language_pair, part_of_speech, definition, frequency
+  - Пример:
+```
+source_word,target_word,language_pair,part_of_speech,definition,frequency
+hello,привет,en-ru,interjection,greeting,120
+world,мир,en-ru,noun,planet or humanity,85
+```
+
+- JSON (массив объектов):
+```
+[
+  {"source_word":"hello","target_word":"привет","language_pair":"en-ru","part_of_speech":"interjection","definition":"greeting","frequency":120},
+  {"source_word":"world","target_word":"мир","language_pair":"en-ru","part_of_speech":"noun","definition":"planet or humanity","frequency":85}
+]
+```
+
+- JSONL (по одному объекту на строку):
+```
+{"source_word":"hello","target_word":"привет","language_pair":"en-ru","part_of_speech":"interjection","definition":"greeting","frequency":120}
+{"source_word":"world","target_word":"мир","language_pair":"en-ru","part_of_speech":"noun","definition":"planet or humanity","frequency":85}
+```
+
+Примечания по полям:
+- language_pair (строка формата `xx-yy`, например `en-ru`). Если не указано в файле, используйте флаг `--lang`.
+- source_word нормализуется: trim + lower-case (наша БД хранит source_word в нижнем регистре).
+- target_word сохраняется как есть (trim).
+- part_of_speech и definition опциональны.
+- frequency — целое число; при повторных вставках значение увеличивается (агрегация частот).
+
+### Типичные ошибки и их решения
+- Конфликт транзакций SQLite: не запускайте параллельные импорты в одну и ту же БД.
+- Регистрозависимость: тестовые ожидания должны учитывать, что source_word хранится в нижнем регистре.
+- Некорректный формат `language_pair`: допустим только ISO 639-1, образец `en-ru`.
+- Пустые поля: `source_word` и `target_word` обязательны.
 
 ### Импорт словарей (через код)
 ```dart path=null start=null
