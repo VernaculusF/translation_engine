@@ -526,10 +526,11 @@ class UserDataRepository extends BaseRepository {
         );
         
         result = UserSettings(
-          id: existing.first['id'] as int,
+          // user_settings table uses setting_key as PK, no numeric id
+          id: null,
           key: key,
           value: value,
-          description: description,
+          description: description ?? existing.first['description'] as String?,
           createdAt: DateTime.fromMillisecondsSinceEpoch(existing.first['created_at'] as int),
           updatedAt: now,
         );

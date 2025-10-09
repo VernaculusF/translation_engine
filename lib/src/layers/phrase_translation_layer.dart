@@ -232,6 +232,7 @@ class PhraseTranslationLayer extends BaseTranslationLayer {
         'max_translations_per_phrase': _maxTranslationsPerPhrase,
         'min_phrase_words': _minPhraseWords,
         'max_phrase_words': _maxPhraseWords,
+        'phrase_repo_table': _phraseRepository.tableName,
         ...additionalInfo,
       },
     );
