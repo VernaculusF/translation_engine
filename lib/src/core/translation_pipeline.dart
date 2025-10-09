@@ -308,13 +308,6 @@ class TranslationPipeline {
     }
   }
   
-  /// Получить активные слои для обработки
-  List<TranslationLayer> _getActiveLayers(String text, TranslationContext context) {
-    return _layers
-        .where((layer) => layer.isEnabled && layer.canProcess(text, context))
-        .toList();
-  }
-  
   /// Упорядочить слои по приоритету
   void _sortLayers() {
     _layers.sort((a, b) => a.priority.compareTo(b.priority));
