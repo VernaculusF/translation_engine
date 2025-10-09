@@ -136,6 +136,16 @@ All schemas are created automatically by DatabaseManager.
 
 ## 5. Populating Databases
 
+Dictionary importer
+- CLI: `dart run bin/import_dictionary.dart --file=path/to.csv --db=/path/to/dbdir --lang=en-ru --format=csv --delimiter=,`
+- Formats: csv (header preferred), json (array), jsonl (one JSON object per line)
+- Programmatic usage:
+```dart path=null start=null
+final importer = DictionaryImporter(repository: dictRepo);
+final report = await importer.importFile(File('data/en-ru.csv'), languagePair: 'en-ru');
+print(report.toMap());
+```
+
 Bulk operations:
 - Use BaseRepository.executeTransaction to batch inserts/updates in a single transaction.
 - Example (dictionary bulk add):

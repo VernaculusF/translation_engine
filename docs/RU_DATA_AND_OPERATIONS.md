@@ -20,6 +20,23 @@
 
 ## 2. Как добавить языковые данные
 
+### Импорт словарей (CLI)
+- Запуск:
+```
+flutter pub get
+dart run bin/import_dictionary.dart --file=./data/en-ru.csv --db=./.localdb --lang=en-ru --format=csv --delimiter=,
+```
+- Поддерживаемые форматы: CSV (желателен заголовок), JSON (массив), JSONL (по объекту на строку).
+- Языковая пара:
+  - Можно указать флагом `--lang`, либо колонкой `language_pair` в файле.
+
+### Импорт словарей (через код)
+```dart path=null start=null
+final importer = DictionaryImporter(repository: dictionaryRepo);
+final report = await importer.importFile(File('data.jsonl'), format: 'jsonl');
+print(report.toMap());
+```
+
 ### 2.1. Слова (DictionaryRepository)
 - Нормализация: source_word приводится к нижнему регистру, лишние пробелы убираются.
 - Добавление одной записи:

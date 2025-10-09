@@ -39,6 +39,10 @@ Future<void> main() async {
 
 ### Tests
 
+### Importer CLI
+- Import dictionaries from CSV/JSON/JSONL into dictionaries.db:
+  - `dart run bin/import_dictionary.dart --file=path/to.csv --db=/path/to/dbdir --lang=en-ru --format=csv --delimiter=,`
+
 - Run analyzer: `flutter analyze`
 - Run tests: `flutter test`
 
