@@ -30,4 +30,10 @@ migrate_working_dir/
 /build/
 /coverage/
 # Reports
-/reports/
+/ reports/
+
+# Databases and external data
+*.db
+**/*.db
+translation_data/
+**/translation_data/

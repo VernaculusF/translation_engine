@@ -34,3 +34,9 @@ bin/import_dictionary_cli.dart
 
 # Файлы сборки
 build/
+
+# External data and databases (exclude from package)
+*.db
+**/*.db
+translation_data/
+**/translation_data/

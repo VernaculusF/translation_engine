@@ -6,7 +6,7 @@ Offline translation engine for Flutter applications.
 
 ```yaml
 dependencies:
-  translation_engine: ^0.0.3
+  translation_engine: ^0.0.4
 ```
 
 ## Usage
