@@ -107,6 +107,14 @@ Below are the core data structures returned/consumed by the engine and layers.
   - translatedText?: String
   - metadata: Map<String, dynamic> (get/set via setMetadata/getMetadata)
 
+### Enums used by TranslationContext
+
+```dart path=null start=null
+enum TranslationMode { standard, fast, detailed, quality }
+enum FormalityLevel { auto, informal, neutral, formal }
+enum TranslationDomain { general, technical, medical, legal, scientific, business, literary }
+```
+
 ## 4. Databases and Schemas
 
 Databases are created in a folder (customDatabasePath). Three DB files are used:
@@ -228,6 +236,52 @@ Best practices:
 
 ## 8. Performance and Reporting
 
+Quality scoring & alternatives:
+- qualityScore (1..10) is optional and can be derived from confidence and formatting metrics.
+  - Reference formula (example):
+```dart path=null start=null
+// Map confidence (0..1) to 6..10, deduct penalties based on formatting/grammar scores
+double qualityScoreFrom(double confidence, {double formattingScore = 1.0, double grammarScore = 1.0}) {
+  // base 6..10
+  final base = 6.0 + (confidence.clamp(0.0, 1.0) * 4.0);
+  final penalty = (1.0 - formattingScore.clamp(0.0, 1.0)) * 1.0 + (1.0 - grammarScore.clamp(0.0, 1.0)) * 1.0;
+  return (base - penalty).clamp(1.0, 10.0);
+}
+```
+- alternatives is a list of candidate translations; produce them from Phrase/Dictionary lookups and post-process. Example:
+```dart path=null start=null
+final result = TranslationResult.success(
+  originalText: text,
+  translatedText: bestCandidate,
+  languagePair: ctx.languagePair,
+  confidence: 0.9,
+  processingTimeMs: sw.elapsedMilliseconds,
+  layerResults: layers,
+  alternatives: ['Candidate A', 'Candidate B'],
+  context: {'source_tokens': tokens},
+);
+```
+
+Cache and memory:
+- CacheManager limits (hard-coded defaults):
+  - MAX_WORDS_CACHE = 10,000
+  - MAX_PHRASES_CACHE = 5,000
+  - CACHE_TTL_MS = 30 minutes
+- Metrics: `CacheManager.metrics` returns counts, hit/miss, estimated_memory_bytes, configured limits.
+- Recommended production defaults:
+  - For small-scale apps (<= 10k words): 128MB RAM budget is sufficient for engine + caches.
+  - For mid-scale (<= 50k items total): consider 256MB+ and adjust limits (fork of CacheManager).
+
+Runtime metrics and monitoring:
+- TranslationPipeline.statistics: processed_texts, total/avg processing time, layer_statistics (executions, total/avg time per layer)
+- TranslationResult.performanceReport: aggregate per-translation timing and cache metrics
+- Add an application-level exporter to push these metrics into your APM (e.g., Prometheus via custom adapter).
+
+Benchmarks and reports:
+- Run: `flutter test test/benchmarks/perf_benchmarks_test.dart`
+- Generate JSON report: `flutter test test/benchmarks/perf_report_test.dart` → `reports/performance/*.json`
+- Recommended P50/P95/P99 additions: extend perf_report_test to compute percentiles from recorded samples.
+
 Cache and memory:
 - CacheManager limits (hard-coded defaults):
   - MAX_WORDS_CACHE = 10,000
@@ -259,6 +313,31 @@ Benchmarks and reports:
 - E2E test: `flutter test test/e2e/pipeline_e2e_test.dart`
 
 ## 10. Integration Tips for Real Apps
+
+Persisting TranslationResult to history:
+```dart path=null start=null
+final engine = TranslationEngine.instance();
+await engine.initialize(customDatabasePath: '/data/appdb');
+final ctx = TranslationContext(sourceLanguage: 'en', targetLanguage: 'ru', debugMode: false);
+final result = await engine.translate('Good morning', sourceLanguage: 'en', targetLanguage: 'ru', context: ctx);
+
+// Save to history
+final userRepo = UserDataRepository(databaseManager: DatabaseManager(customDatabasePath: '/data/appdb'), cacheManager: CacheManager());
+await userRepo.addToHistory(result, sessionId: 'session-123');
+```
+
+Using sessionId and userId:
+- sessionId — связывает несколько операций перевода одной пользовательской сессии; передавайте при сохранении истории (addToHistory).
+- userId — задайте в TranslationContext, если необходимо связывать события/правки с конкретным пользователем (например, B2B многопользовательская среда).
+```dart path=null start=null
+final ctx = TranslationContext(
+  sourceLanguage: 'en',
+  targetLanguage: 'ru',
+  userId: 'user-42',
+  // можно сохранить дополнительный контекст
+  metadata: {'tenant': 'acme'},
+);
+```
 
 - Provide a writable database path on the device (e.g., application documents directory)
 - Initialize engine in app startup and reuse the singleton
