@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'package:translation_engine/translation_engine.dart';
 
 void main() async {

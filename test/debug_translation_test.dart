@@ -1,3 +1,5 @@
+// ignore_for_file: avoid_print
+
 import 'package:test/test.dart';
 import 'package:translation_engine/src/core/translation_engine.dart';
 import 'package:translation_engine/src/data/database_manager_ffi.dart';
