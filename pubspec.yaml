@@ -1,6 +1,6 @@
 name: translation_engine
 description: "Offline translation engine for Flutter with layered processing, dictionary management, and phrase translation support."
-version: 0.0.3
+version: 0.0.4
 homepage: https://github.com/VernaculusF/translation_engine
 repository: https://github.com/VernaculusF/translation_engine
 
@@ -23,6 +23,5 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   mockito: ^5.4.0
   test: ^1.24.6
-  sqlite3: ^2.4.2
 flutter:
 

@@ -11,14 +11,40 @@ import '../lib/src/utils/cache_manager.dart';
 import '../lib/src/core/translation_pipeline.dart';
 import '../lib/src/core/translation_context.dart';
 
-void main(List<String> arguments) async {
+void printUsage() {
+  print('Translation pipeline CLI (FFI)');
+  print('');
+  print('Usage:');
+  print('  dart run bin/test_cli.dart [--db=<dir>] [--lang=en-ru] [text ...]');
+}
+
+Future<void> main(List<String> arguments) async {
   print('🔍 CLI тестирование TranslationEngine без Flutter');
-  
+
+  // Parse simple args
+  String? dbDir;
+  String lang = 'en-ru';
+  final words = <String>[];
+  for (final a in arguments) {
+    if (a.startsWith('--db=')) {
+      dbDir = a.substring(5);
+    } else if (a.startsWith('--lang=')) {
+      lang = a.substring(7);
+    } else if (a.startsWith('--')) {
+      // skip unknown flags
+    } else {
+      words.add(a);
+    }
+  }
+  if (words.isEmpty) {
+    words.addAll(['hello', 'world', 'good']);
+  }
+
   try {
     print('📦 Создание компонентов движка...');
     
     // Создаем компоненты напрямую с FFI database manager
-    final databaseManager = DatabaseManagerFfi();
+    final databaseManager = DatabaseManagerFfi(customDatabasePath: dbDir);
     final cacheManager = CacheManager();
     
     final dictionaryRepository = DictionaryRepository(
@@ -46,17 +72,14 @@ void main(List<String> arguments) async {
     
     print('✅ Компоненты созданы');
     
-    // Тестовые слова
-    final testWords = ['hello', 'world', 'good'];
-    
     print('\n🔤 Тестирование перевода слов...');
-    for (final word in testWords) {
+    for (final word in words) {
       print('\n🔸 Переводим: "$word"');
       
       try {
         final result = await pipeline.process(word, TranslationContext(
-          sourceLanguage: 'en',
-          targetLanguage: 'ru',
+          sourceLanguage: lang.split('-').first,
+          targetLanguage: lang.split('-').last,
         ));
         
         print('  Результат:');
