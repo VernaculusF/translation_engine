@@ -13,6 +13,7 @@ import '../utils/cache_manager.dart';
 import '../models/translation_result.dart';
 import '../models/layer_debug_info.dart';
 import 'translation_context.dart';
+import 'layer_adapters.dart';
 
 /// Состояния pipeline обработки
 enum PipelineState {
@@ -100,8 +101,11 @@ class TranslationPipeline {
     required this.phraseRepository,
     required this.userDataRepository,
     required this.cacheManager,
+    bool registerDefaultLayers = false,
   }) {
-    _initializeDefaultLayers();
+    if (registerDefaultLayers) {
+      _initializeDefaultLayers();
+    }
   }
   
   /// Текущее состояние pipeline
@@ -287,13 +291,24 @@ class TranslationPipeline {
   
   /// Инициализация базовых слоев (пока пустая реализация)
   void _initializeDefaultLayers() {
-    // В Stage 3 здесь будут зарегистрированы слои:
-    // registerLayer(PreProcessingLayer());
-    // registerLayer(PhraseLookupLayer(_phraseRepository, _cacheManager));
-    // registerLayer(DictionaryLayer(_dictionaryRepository, _cacheManager));
-    // registerLayer(GrammarLayer());
-    // registerLayer(WordOrderLayer());
-    // registerLayer(PostProcessingLayer());
+    // Register adapters for all base layers in correct order
+    try {
+      // Pre-processing
+      registerLayer(LayerAdaptersFactory.preProcessing());
+
+      // Phrase lookup depends on PhraseRepository
+      registerLayer(LayerAdaptersFactory.phraseLookup(repo: phraseRepository));
+
+      // Dictionary lookup depends on DictionaryRepository
+      registerLayer(LayerAdaptersFactory.dictionary(repo: dictionaryRepository));
+
+      // Grammar, Word order, Post-processing
+      registerLayer(LayerAdaptersFactory.grammar());
+      registerLayer(LayerAdaptersFactory.wordOrder());
+      registerLayer(LayerAdaptersFactory.postProcessing());
+    } catch (_) {
+      // In case of any initialization issues, leave pipeline without default layers
+    }
   }
   
   /// Получить активные слои для обработки

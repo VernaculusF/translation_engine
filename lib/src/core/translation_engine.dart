@@ -177,6 +177,7 @@ class TranslationEngine {
         phraseRepository: _phraseRepository,
         userDataRepository: _userDataRepository,
         cacheManager: _cacheManager,
+        registerDefaultLayers: true,
       );
       
       // Применение конфигурации
