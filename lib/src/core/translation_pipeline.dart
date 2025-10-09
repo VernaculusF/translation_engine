@@ -176,36 +176,21 @@ class TranslationPipeline {
     try {
       _setState(PipelineState.processing);
       
-      // Получить активные слои для обработки
-      final activeLayers = _getActiveLayers(text, context);
-      
-      if (activeLayers.isEmpty) {
-        // Нет активных слоев - возвращаем как есть
-        layerResults.add(LayerDebugInfo.success(
-          layerName: 'Pipeline',
-          processingTimeMs: 0,
-          cacheHits: 0,
-          itemsProcessed: 0,
-          modificationsCount: 0,
-        ));
+      // Обработка слоев по приоритету, проверяя возможность на каждом шаге
+      final layersToRun = List<TranslationLayer>.from(_layers);
+      bool anyLayerProcessed = false;
+
+      for (final layer in layersToRun) {
+        if (!layer.isEnabled) {
+          continue;
+        }
         
-        stopwatch.stop();
-        _updateStatistics(stopwatch.elapsed, {});
+        // Проверяем возможность обработки на текущем шаге с учетом уже добавленных метаданных
+        if (!layer.canProcess(currentText, context)) {
+          continue;
+        }
         
-        _setState(PipelineState.completed);
-        
-        return TranslationResult.success(
-          originalText: text,
-          translatedText: text, // Нет обработки
-          languagePair: context.languagePair,
-          confidence: 0.5,
-          processingTimeMs: stopwatch.elapsedMilliseconds,
-          layerResults: layerResults,
-        );
-      }
-      
-      // Обработка через каждый слой
-      for (final layer in activeLayers) {
+        anyLayerProcessed = true;
         final layerStopwatch = Stopwatch()..start();
         
         try {
@@ -236,6 +221,18 @@ class TranslationPipeline {
       _updateStatistics(stopwatch.elapsed, _layerProcessingTimes);
       
       _setState(PipelineState.completed);
+      
+      // Если ни один слой не обработал текст, вернуть исходный
+      if (!anyLayerProcessed) {
+        return TranslationResult.success(
+          originalText: text,
+          translatedText: text,
+          languagePair: context.languagePair,
+          confidence: 0.5,
+          processingTimeMs: stopwatch.elapsedMilliseconds,
+          layerResults: layerResults,
+        );
+      }
       
       // Вычисляем confidence на основе результатов слоев
       final confidence = _calculateConfidence(layerResults);
