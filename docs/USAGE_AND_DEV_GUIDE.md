@@ -38,7 +38,76 @@ Future<void> main() async {
   - Repositories: DictionaryRepository, PhraseRepository, UserDataRepository
   - CacheManager: in-memory LRU cache
 
-## 3. Databases and Schemas
+## 3. Data Models
+
+Below are the core data structures returned/consumed by the engine and layers.
+
+- TranslationResult
+  - originalText: String
+  - translatedText: String
+  - languagePair: String (e.g., "en-ru")
+  - confidence: double (0.0-1.0)
+  - processingTimeMs: int
+  - layerResults: List<LayerDebugInfo>
+  - layersProcessed: int
+  - hasError: bool
+  - errorMessage?: String
+  - cacheMetrics?: CacheMetrics
+  - timestamp: DateTime
+  - qualityScore?: double (1..10)
+  - alternatives: List<String>
+  - context: Map<String, dynamic>
+
+- LayerResult (per layer)
+  - processedText: String
+  - success: bool
+  - errorMessage?: String
+  - confidence: double (0.0-1.0)
+  - debugInfo: LayerDebugInfo
+  - metadata: Map<String, dynamic>
+
+- LayerDebugInfo (per layer)
+  - layerName: String
+  - processingTimeMs: int
+  - isSuccessful: bool
+  - hasError: bool
+  - errorMessage?: String
+  - itemsProcessed: int
+  - modificationsCount: int
+  - impactLevel: double (0.0-1.0)
+  - cacheHits: int
+  - cacheMisses: int
+  - inputText?: String
+  - outputText?: String
+  - wasModified: bool
+  - additionalInfo: Map<String, dynamic>
+  - debugData: Map<String, dynamic>
+  - warnings: List<String>
+  - layerConfig: Map<String, dynamic>
+
+- TranslationContext (input to pipeline and layers)
+  - sourceLanguage: String (ISO 639-1)
+  - targetLanguage: String (ISO 639-1)
+  - mode: TranslationMode (standard|fast|detailed|quality)
+  - formality: FormalityLevel (auto|informal|neutral|formal)
+  - domain: TranslationDomain (general|technical|medical|legal|scientific|business|literary)
+  - maxProcessingTimeMs?: int
+  - minConfidence?: double
+  - useCache: bool (default true)
+  - saveToCache: bool (default true)
+  - useUserCorrections: bool (default true)
+  - debugMode: bool (default false)
+  - excludeWords: Set<String>
+  - forceTranslations: Map<String, String>
+  - contextText?: String
+  - userId?: String
+  - sessionId?: String
+  - tokens?: List<String>
+  - originalText?: String
+  - translatedText?: String
+  - metadata: Map<String, dynamic> (get/set via setMetadata/getMetadata)
+
+## 4. Databases and Schemas
 
 Databases are created in a folder (customDatabasePath). Three DB files are used:
 
@@ -57,7 +126,49 @@ Databases are created in a folder (customDatabasePath). Three DB files are used:
 
 All schemas are created automatically by DatabaseManager.
 
-## 4. Populating Databases
+## 5. Populating Databases
+
+Bulk operations:
+- Use BaseRepository.executeTransaction to batch inserts/updates in a single transaction.
+- Example (dictionary bulk add):
+```dart path=null start=null
+final words = [
+  {'source': 'alpha', 'target': 'альфа'},
+  {'source': 'beta', 'target': 'бета'},
+];
+await dict.executeTransaction((conn) async {
+  for (final w in words) {
+    await conn.execute(
+      'INSERT INTO words (source_word, target_word, language_pair, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      [w['source'], w['target'], 'en-ru', DateTime.now().millisecondsSinceEpoch, DateTime.now().millisecondsSinceEpoch],
+    );
+  }
+  return true;
+});
+```
+
+User corrections (edits/settings/history):
+```dart path=null start=null
+// settings
+await user.setSetting('default_language_pair', 'en-ru', description: 'Default translation pair');
+
+// add user edit
+await user.addTranslationEdit(
+  'How are you?',
+  'Как дела?',
+  'Как поживаешь?',
+  'en-ru',
+  reason: 'More natural',
+);
+
+// get edits
+final edits = await user.getTranslationEdits(languagePair: 'en-ru');
+```
+
+Error handling in repositories:
+- ValidationException — invalid input
+- DatabaseInitException/DatabaseQueryException — DB initialization and query errors
+- Use try/catch and surface errors to UI/telemetry
 
 Use repositories for safe, validated inserts.
 
@@ -84,7 +195,7 @@ await user.setSetting('default_language_pair', 'en-ru', description: 'Default tr
 Normalization rules:
 - words.source_word and phrases.source_phrase are normalized to lowercase and spaces collapsed.
 
-## 5. Using the Pipeline and Layers
+## 6. Using the Pipeline and Layers
 
 - Engine initializes pipeline with all default layers via adapters.
 - To customize layers:
@@ -103,7 +214,7 @@ final pipeline = TranslationPipeline(
 // e.g., LayerAdaptersFactory.preProcessing(), LayerAdaptersFactory.dictionary(repo: dict)
 ```
 
-## 6. Extending with Custom Layers
+## 7. Extending with Custom Layers
 
 Implement BaseTranslationLayer:
 - canHandle(String text, TranslationContext context)
@@ -115,19 +226,39 @@ Best practices:
 - Return LayerResult.success/noChange/error accordingly
 - Keep regex safe and avoid heavy CPU where possible
 
-## 7. Performance and Reporting
+## 8. Performance and Reporting
+
+Cache and memory:
+- CacheManager limits (hard-coded defaults):
+  - MAX_WORDS_CACHE = 10,000
+  - MAX_PHRASES_CACHE = 5,000
+  - CACHE_TTL_MS = 30 minutes
+- Metrics: `CacheManager.metrics` returns counts, hit/miss, estimated_memory_bytes, configured limits.
+- Recommended production defaults:
+  - For small-scale apps (<= 10k words): 128MB RAM budget is sufficient for engine + caches.
+  - For mid-scale (<= 50k items total): consider 256MB+ and adjust limits (fork of CacheManager).
+
+Runtime metrics and monitoring:
+- TranslationPipeline.statistics: processed_texts, total/avg processing time, layer_statistics (executions, total/avg time per layer)
+- TranslationResult.performanceReport: aggregate per-translation timing and cache metrics
+- Add an application-level exporter to push these metrics into your APM (e.g., Prometheus via custom adapter).
+
+Benchmarks and reports:
+- Run: `flutter test test/benchmarks/perf_benchmarks_test.dart`
+- Generate JSON report: `flutter test test/benchmarks/perf_report_test.dart` → `reports/performance/*.json`
+- Recommended P50/P95/P99 additions: extend perf_report_test to compute percentiles from recorded samples.
 
 - Run benchmarks: `flutter test test/benchmarks/perf_benchmarks_test.dart`
 - Generate JSON perf report: `flutter test test/benchmarks/perf_report_test.dart` → `reports/performance/*.json`
 - Use pipeline.statistics for layer-level timings and counts
 
-## 8. Testing
+## 9. Testing
 
 - Analyzer: `flutter analyze`
 - All tests: `flutter test`
 - E2E test: `flutter test test/e2e/pipeline_e2e_test.dart`
 
-## 9. Integration Tips for Real Apps
+## 10. Integration Tips for Real Apps
 
 - Provide a writable database path on the device (e.g., application documents directory)
 - Initialize engine in app startup and reuse the singleton
@@ -135,7 +266,29 @@ Best practices:
 - Persist user corrections via UserDataRepository
 - Use context (formality, domain) for future rule refinements
 
-## 10. Maintenance and Updates
+## 11. Maintenance and Updates
+
+Security & validation guidelines:
+- Input limits:
+  - Max text length: recommend <= 10,000 characters per request (guard at UI/backend)
+  - Supported languages: validate ISO 639-1 codes and pair format (e.g., en-ru)
+- Malicious input handling:
+  - PreProcessingLayer sanitizes HTML/Markdown; do not execute HTML/JS
+  - Disallow binary data; normalize Unicode before processing
+  - Avoid catastrophic regex: keep rules linear-time; test new regex offline
+- API validation:
+  - TranslationEngine.translate returns error for empty input; enforce text length and language allowlists in your app
+  - Repositories validate data (e.g., language_pair format, non-empty fields); wrap bulk ops in transactions
+- Secrets & PII:
+  - Do not log user content at INFO; keep debugMode off in production
+  - If storing history (user_data.db), ensure compliance with local data protection laws; allow user opt-out
+- Resource constraints:
+  - Configure timeouts via context.maxProcessingTimeMs in future extensions; currently enforce request time budgets at app level
+
+Operational tips:
+- Turn off debugMode in production
+- Periodically call CacheManager.cleanupExpired() on long-running services
+- Monitor pipeline.statistics and cache metrics; alert on rising error rates/latencies
 
 - Follow CHANGELOG for new versions and migration notes
 - Keep tests green (CI recommended: analyzer + tests)
