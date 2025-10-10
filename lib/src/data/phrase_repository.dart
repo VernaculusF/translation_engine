@@ -1,6 +1,7 @@
-import 'base_repository.dart';
+import 'dart:convert';
 import '../utils/exceptions.dart';
-import 'database_types.dart';
+import '../utils/cache_manager.dart';
+import '../storage/file_storage.dart';
 
 /// Модель фразы для перевода
 class PhraseEntry {
@@ -126,45 +127,41 @@ class PhraseEntry {
   int get hashCode => Object.hash(sourcePhrase, targetPhrase, languagePair);
 }
 
-/// Репозиторий для работы с фразами
-class PhraseRepository extends BaseRepository {
+/// Репозиторий для работы с фразами (файловое хранилище JSONL)
+class PhraseRepository {
   static const String _cachePrefix = 'phrase:';
-  
+
+  final CacheManager cacheManager;
+  final FileStorageService storage;
+
   PhraseRepository({
-    required super.databaseManager,
-    required super.cacheManager,
-  });
+    required String dataDirPath,
+    required this.cacheManager,
+  }) : storage = FileStorageService(rootDir: dataDirPath);
+
+  final Map<String, _PhraseLangCache> _langCaches = {};
+  _PhraseLangCache _ensureLoaded(String languagePair) {
+    final lang = languagePair.toLowerCase();
+    return _langCaches.putIfAbsent(lang, () => _PhraseLangCache(lang, storage));
+  }
   
-  @override
-  String get tableName => 'phrases';
-  
-  @override
-  DatabaseType get databaseType => DatabaseType.phrases;
-  
-  @override
   String generateCacheKey(Map<String, dynamic> params) {
     final sourcePhrase = params['sourcePhrase'] as String?;
     final languagePair = params['languagePair'] as String?;
     final searchType = params['searchType'] as String? ?? 'exact';
-    
     if (sourcePhrase != null && languagePair != null) {
-      // Нормализовать фразу для ключа
       final normalizedPhrase = sourcePhrase
           .toLowerCase()
           .replaceAll(RegExp(r'[^\w\s]'), ' ')
           .replaceAll(RegExp(r'\s+'), '_');
       return '$_cachePrefix$searchType:$languagePair:$normalizedPhrase';
     }
-    
-    // Для других типов запросов
     final queryType = params['queryType'] as String? ?? 'unknown';
     final hash = params.hashCode.toString();
     return '$_cachePrefix$queryType:$hash';
   }
-  
-  @override
+
   void clearCache() {
-    // Очистить только ключи фраз
     final allKeys = cacheManager.getAllKeys();
     for (final key in allKeys) {
       if (key.startsWith(_cachePrefix)) {
@@ -172,85 +169,61 @@ class PhraseRepository extends BaseRepository {
       }
     }
   }
-  
-  @override
-  void validateData(Map<String, dynamic> data) {
-    super.validateData(data);
-    
+
+  void _validateData(Map<String, dynamic> data) {
     if (data['source_phrase'] == null || (data['source_phrase'] as String).trim().isEmpty) {
       throw ValidationException('Source phrase is required and cannot be empty');
     }
-    
     if (data['target_phrase'] == null || (data['target_phrase'] as String).trim().isEmpty) {
       throw ValidationException('Target phrase is required and cannot be empty');
     }
-    
     if (data['language_pair'] == null || (data['language_pair'] as String).trim().isEmpty) {
       throw ValidationException('Language pair is required and cannot be empty');
     }
-    
-    // Валидация формата языковой пары
     final languagePair = data['language_pair'] as String;
     if (!RegExp(r'^[a-z]{2}-[a-z]{2}$').hasMatch(languagePair)) {
       throw ValidationException('Language pair must be in format "xx-xx" (e.g., "en-ru")');
     }
-    
-    // Валидация confidence
     if (data['confidence'] != null) {
       final confidence = data['confidence'] as int;
       if (confidence < 0 || confidence > 100) {
         throw ValidationException('Confidence must be between 0 and 100');
       }
     }
-    
-    // Проверить длину фраз
-    final sourcePhrase = data['source_phrase'] as String;
-    final targetPhrase = data['target_phrase'] as String;
-    if (sourcePhrase.length < 3) {
-      throw ValidationException('Source phrase must be at least 3 characters long');
+    final sourcePhrase = (data['source_phrase'] as String).trim();
+    final targetPhrase = (data['target_phrase'] as String).trim();
+    if (sourcePhrase.isEmpty) {
+      throw ValidationException('Source phrase must not be empty');
     }
-    if (targetPhrase.length < 3) {
-      throw ValidationException('Target phrase must be at least 3 characters long');
+    if (targetPhrase.isEmpty) {
+      throw ValidationException('Target phrase must not be empty');
     }
   }
-  
-  @override
-  Map<String, dynamic> transformForDatabase(Map<String, dynamic> data) {
+
+  Map<String, dynamic> _normalize(Map<String, dynamic> data) {
     final transformed = Map<String, dynamic>.from(data);
-    
-    // Нормализация фраз
     if (transformed['source_phrase'] != null) {
       transformed['source_phrase'] = (transformed['source_phrase'] as String)
           .trim()
           .toLowerCase()
-          .replaceAll(RegExp(r'\s+'), ' '); // объединить множественные пробелы
+          .replaceAll(RegExp(r'\s+'), ' ');
     }
-    
     if (transformed['target_phrase'] != null) {
       transformed['target_phrase'] = (transformed['target_phrase'] as String)
           .trim()
           .replaceAll(RegExp(r'\s+'), ' ');
     }
-    
     if (transformed['language_pair'] != null) {
       transformed['language_pair'] = (transformed['language_pair'] as String).toLowerCase();
     }
-    
     if (transformed['category'] != null) {
       transformed['category'] = (transformed['category'] as String).toLowerCase().trim();
     }
-    
-    // Установить значения по умолчанию
     transformed['confidence'] ??= 95;
     transformed['frequency'] ??= 1;
-    
-    // Добавить временные метки
     final now = DateTime.now().millisecondsSinceEpoch;
     transformed['updated_at'] = now;
-    if (transformed['created_at'] == null) {
-      transformed['created_at'] = now;
-    }
-    
+    transformed['created_at'] ??= now;
     return transformed;
   }
   
@@ -262,45 +235,29 @@ class PhraseRepository extends BaseRepository {
   }) async {
     final normalizedPhrase = sourcePhrase.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
     final normalizedLangPair = languagePair.toLowerCase();
-    
-    // Попробовать получить из кэша
+
     if (useCache) {
       final cacheKey = generateCacheKey({
         'sourcePhrase': normalizedPhrase,
         'languagePair': normalizedLangPair,
         'searchType': 'exact',
       });
-      
-      final cached = getCached<PhraseEntry>(cacheKey);
-      if (cached != null) {
-        return cached;
-      }
+      final cached = cacheManager.get<PhraseEntry>(cacheKey);
+      if (cached != null) return cached;
     }
-    
-    // Поиск в базе данных
-    final results = await executeQuery((connection) async {
-      return await connection.query(
-        'SELECT * FROM $tableName WHERE source_phrase = ? AND language_pair = ? ORDER BY confidence DESC, frequency DESC LIMIT 1',
-        [normalizedPhrase, normalizedLangPair],
-      );
-    });
-    
-    if (results.isEmpty) {
-      return null;
-    }
-    
-    final entry = PhraseEntry.fromMap(results.first);
-    
-    // Сохранить в кэш
+
+    final cache = _ensureLoaded(normalizedLangPair);
+    final entry = cache.bySource[normalizedPhrase];
+    if (entry == null) return null;
+
     if (useCache) {
       final cacheKey = generateCacheKey({
         'sourcePhrase': normalizedPhrase,
         'languagePair': normalizedLangPair,
         'searchType': 'exact',
       });
-      setCached(cacheKey, entry);
+      cacheManager.set(cacheKey, entry);
     }
-    
     return entry;
   }
   
@@ -323,76 +280,56 @@ class PhraseRepository extends BaseRepository {
       'frequency': frequency,
       'confidence': confidence,
     };
-    
-    validateData(data);
-    final transformedData = transformForDatabase(data);
-    
-    return executeTransaction((connection) async {
-      // Проверить, существует ли уже такая фраза
-      final existing = await connection.query(
-        'SELECT * FROM $tableName WHERE source_phrase = ? AND language_pair = ?',
-        [transformedData['source_phrase'], transformedData['language_pair']],
+
+    _validateData(data);
+    final transformedData = _normalize(data);
+
+    final lang = transformedData['language_pair'] as String;
+    final cache = _ensureLoaded(lang);
+    final key = (transformedData['source_phrase'] as String);
+
+    PhraseEntry result;
+    final existing = cache.bySource[key];
+    if (existing != null) {
+      final updated = existing.copyWith(
+        targetPhrase: transformedData['target_phrase'] as String,
+        category: transformedData['category'] as String?,
+        context: transformedData['context'] as String?,
+        frequency: existing.frequency + (transformedData['frequency'] as int? ?? 1),
+        confidence: ((existing.confidence + (transformedData['confidence'] as int? ?? 95)) ~/ 2),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(transformedData['updated_at'] as int),
       );
-      
-      PhraseEntry result;
-      
-      if (existing.isNotEmpty) {
-        // Обновить существующую фразу
-        final existingId = existing.first['id'] as int;
-        final existingFrequency = existing.first['frequency'] as int;
-        final existingConfidence = existing.first['confidence'] as int;
-        
-        // Увеличить частотность и обновить confidence
-        transformedData['frequency'] = existingFrequency + frequency;
-        transformedData['confidence'] = (existingConfidence + confidence) ~/  2; // среднее значение
-        transformedData['id'] = existingId;
-        
-        await connection.execute(
-          'UPDATE $tableName SET target_phrase = ?, category = ?, context = ?, frequency = ?, confidence = ?, updated_at = ? WHERE id = ?',
-          [
-            transformedData['target_phrase'],
-            transformedData['category'],
-            transformedData['context'],
-            transformedData['frequency'],
-            transformedData['confidence'],
-            transformedData['updated_at'],
-            existingId,
-          ],
-        );
-        
-        transformedData['created_at'] = existing.first['created_at'];
-        result = PhraseEntry.fromMap(transformedData);
-      } else {
-        // Вставить новую фразу
-        final insertId = await connection.execute(
-          'INSERT INTO $tableName (source_phrase, target_phrase, language_pair, category, context, frequency, confidence, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [
-            transformedData['source_phrase'],
-            transformedData['target_phrase'],
-            transformedData['language_pair'],
-            transformedData['category'],
-            transformedData['context'],
-            transformedData['frequency'],
-            transformedData['confidence'],
-            transformedData['created_at'],
-            transformedData['updated_at'],
-          ],
-        );
-        
-        transformedData['id'] = insertId;
-        result = PhraseEntry.fromMap(transformedData);
-      }
-      
-      // Обновить кэш
-      final cacheKey = generateCacheKey({
-        'sourcePhrase': transformedData['source_phrase'],
-        'languagePair': transformedData['language_pair'],
-        'searchType': 'exact',
-      });
-      setCached(cacheKey, result);
-      
-      return result;
+      cache.bySource[key] = updated;
+      result = updated;
+    } else {
+      final id = ++cache.maxId;
+      final entry = PhraseEntry(
+        id: id,
+        sourcePhrase: key,
+        targetPhrase: transformedData['target_phrase'] as String,
+        languagePair: lang,
+        category: transformedData['category'] as String?,
+        context: transformedData['context'] as String?,
+        frequency: transformedData['frequency'] as int? ?? 1,
+        confidence: transformedData['confidence'] as int? ?? 95,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(transformedData['created_at'] as int),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(transformedData['updated_at'] as int),
+      );
+      cache.bySource[key] = entry;
+      result = entry;
+    }
+
+    await storage.ensureLangDir(lang);
+    final file = storage.phrasesFile(lang);
+    await storage.rewriteJsonLines(file, cache.bySource.values.map((e) => e.toMap()));
+
+    final cacheKey = generateCacheKey({
+      'sourcePhrase': key,
+      'languagePair': lang,
+      'searchType': 'exact',
     });
+    cacheManager.set(cacheKey, result);
+    return result;
   }
   
   /// Поиск фраз по частичному совпадению
@@ -416,30 +353,27 @@ class PhraseRepository extends BaseRepository {
         'limit': limit,
       });
       
-      final cached = getCached<List<PhraseEntry>>(cacheKey);
+      final cached = cacheManager.get<List<PhraseEntry>>(cacheKey);
       if (cached != null) {
         return cached;
       }
     }
     
-    // Построить запрос
-    String query = 'SELECT * FROM $tableName WHERE (source_phrase LIKE ? OR target_phrase LIKE ?) AND language_pair = ?';
-    List<dynamic> params = ['%$normalizedTerm%', '%$normalizedTerm%', normalizedLangPair];
-    
-    if (category != null) {
-      query += ' AND category = ?';
-      params.add(category.toLowerCase());
-    }
-    
-    query += ' ORDER BY confidence DESC, frequency DESC, LENGTH(source_phrase) ASC LIMIT ?';
-    params.add(limit);
-    
-    // Поиск в базе данных
-    final results = await executeQuery((connection) async {
-      return await connection.query(query, params);
-    });
-    
-    final entries = results.map((row) => PhraseEntry.fromMap(row)).toList();
+    // Поиск по памяти
+    final cache = _ensureLoaded(normalizedLangPair);
+    var entries = cache.bySource.values.where((e) {
+      final okText = e.sourcePhrase.contains(normalizedTerm) || e.targetPhrase.toLowerCase().contains(normalizedTerm);
+      final okCat = category == null || (e.category?.toLowerCase() == category.toLowerCase());
+      return okText && okCat;
+    }).toList()
+      ..sort((a, b) {
+        final c = b.confidence.compareTo(a.confidence);
+        if (c != 0) return c;
+        final f = b.frequency.compareTo(a.frequency);
+        if (f != 0) return f;
+        return a.sourcePhrase.length.compareTo(b.sourcePhrase.length);
+      });
+    if (entries.length > limit) entries = entries.sublist(0, limit);
     
     // Сохранить в кэш
     if (useCache) {
@@ -450,7 +384,7 @@ class PhraseRepository extends BaseRepository {
         'category': category,
         'limit': limit,
       });
-      setCached(cacheKey, entries);
+      cacheManager.set(cacheKey, entries);
     }
     
     return entries;
@@ -470,14 +404,18 @@ class PhraseRepository extends BaseRepository {
       conditions['category'] = category.toLowerCase();
     }
     
-    final results = await getAll(
-      conditions: conditions,
-      orderBy: orderBy,
-      limit: limit,
-      offset: offset,
-    );
-    
-    return results.map((row) => PhraseEntry.fromMap(row)).toList();
+    final cache = _ensureLoaded(languagePair.toLowerCase());
+    var list = cache.bySource.values.where((e) {
+      if (category != null && (e.category?.toLowerCase() != category.toLowerCase())) return false;
+      return true;
+    }).toList();
+    if (orderBy.toLowerCase().contains('confidence')) {
+      final desc = orderBy.toLowerCase().contains('desc');
+      list.sort((a, b) => desc ? b.confidence.compareTo(a.confidence) : a.confidence.compareTo(b.confidence));
+    }
+    if (offset != null && offset > 0 && offset < list.length) list = list.sublist(offset);
+    if (limit != null && limit < list.length) list = list.sublist(0, limit);
+    return list;
   }
   
   /// Получить фразы по категории
@@ -495,52 +433,60 @@ class PhraseRepository extends BaseRepository {
   
   /// Получить список всех категорий
   Future<List<String>> getCategories(String languagePair) async {
-    return executeQuery((connection) async {
-      final results = await connection.query(
-        'SELECT DISTINCT category FROM $tableName WHERE language_pair = ? AND category IS NOT NULL ORDER BY category',
-        [languagePair.toLowerCase()],
-      );
-      
-      return results
-          .map((row) => row['category'] as String)
-          .where((category) => category.isNotEmpty)
-          .toList();
-    });
+    final cache = _ensureLoaded(languagePair.toLowerCase());
+    final set = <String>{};
+    for (final e in cache.bySource.values) {
+      final c = e.category ?? '';
+      if (c.isNotEmpty) set.add(c);
+    }
+    final list = set.toList()..sort();
+    return list;
   }
   
   /// Удалить фразу
   Future<bool> deletePhrase(int id) async {
-    final deleted = await delete({'id': id});
-    return deleted > 0;
+    for (final cache in _langCaches.values) {
+      PhraseEntry? toRemove;
+      for (final e in cache.bySource.values) {
+        if (e.id == id) {
+          toRemove = e;
+          break;
+        }
+      }
+      if (toRemove != null) {
+        cache.bySource.remove(toRemove.sourcePhrase);
+        final file = storage.phrasesFile(cache.lang);
+        await storage.rewriteJsonLines(file, cache.bySource.values.map((e) => e.toMap()));
+        clearCache();
+        return true;
+      }
+    }
+    return false;
   }
   
   /// Получить статистику по языковой паре
   Future<Map<String, dynamic>> getLanguagePairStats(String languagePair) async {
-    return executeQuery((connection) async {
-      final results = await connection.query(
-        'SELECT COUNT(*) as total_phrases, AVG(confidence) as avg_confidence, AVG(frequency) as avg_frequency, COUNT(DISTINCT category) as categories_count FROM $tableName WHERE language_pair = ?',
-        [languagePair.toLowerCase()],
-      );
-      
-      if (results.isEmpty) {
-        return {
-          'language_pair': languagePair,
-          'total_phrases': 0,
-          'avg_confidence': 0.0,
-          'avg_frequency': 0.0,
-          'categories_count': 0,
-        };
-      }
-      
-      final row = results.first;
+    final cache = _ensureLoaded(languagePair.toLowerCase());
+    if (cache.bySource.isEmpty) {
       return {
         'language_pair': languagePair,
-        'total_phrases': row['total_phrases'] as int,
-        'avg_confidence': (row['avg_confidence'] as num?)?.toDouble() ?? 0.0,
-        'avg_frequency': (row['avg_frequency'] as num?)?.toDouble() ?? 0.0,
-        'categories_count': row['categories_count'] as int? ?? 0,
+        'total_phrases': 0,
+        'avg_confidence': 0.0,
+        'avg_frequency': 0.0,
+        'categories_count': 0,
       };
-    });
+    }
+    final total = cache.bySource.length;
+    final avgConf = cache.bySource.values.map((e) => e.confidence).reduce((a, b) => a + b) / total;
+    final avgFreq = cache.bySource.values.map((e) => e.frequency).reduce((a, b) => a + b) / total;
+    final cats = cache.bySource.values.map((e) => e.category).whereType<String>().toSet().length;
+    return {
+      'language_pair': languagePair,
+      'total_phrases': total,
+      'avg_confidence': avgConf,
+      'avg_frequency': avgFreq,
+      'categories_count': cats,
+    };
   }
   
   /// Получить топ наиболее уверенных фраз
@@ -549,14 +495,16 @@ class PhraseRepository extends BaseRepository {
     int limit = 100,
     int minConfidence = 90,
   }) async {
-    return executeQuery((connection) async {
-      final results = await connection.query(
-        'SELECT * FROM $tableName WHERE language_pair = ? AND confidence >= ? ORDER BY confidence DESC, frequency DESC LIMIT ?',
-        [languagePair.toLowerCase(), minConfidence, limit],
-      );
-      
-      return results.map((row) => PhraseEntry.fromMap(row)).toList();
-    });
+    final cache = _ensureLoaded(languagePair.toLowerCase());
+    var list = cache.bySource.values
+        .where((e) => e.confidence >= minConfidence)
+        .toList()
+      ..sort((a, b) {
+        final c = b.confidence.compareTo(a.confidence);
+        return c != 0 ? c : b.frequency.compareTo(a.frequency);
+      });
+    if (list.length > limit) list = list.sublist(0, limit);
+    return list;
   }
   
   /// Поиск по ключевым словам
@@ -566,17 +514,52 @@ class PhraseRepository extends BaseRepository {
     int limit = 20,
   }) async {
     if (keywords.isEmpty) return [];
-    
-    final normalizedKeywords = keywords.map((k) => k.toLowerCase().trim()).toList();
-    final placeholders = normalizedKeywords.map((_) => '?').join(',');
-    
-    return executeQuery((connection) async {
-      final results = await connection.query(
-        'SELECT * FROM $tableName WHERE language_pair = ? AND (source_phrase LIKE ANY (VALUES $placeholders) OR target_phrase LIKE ANY (VALUES $placeholders)) ORDER BY confidence DESC, frequency DESC LIMIT ?',
-        [languagePair.toLowerCase(), ...normalizedKeywords.map((k) => '%$k%'), ...normalizedKeywords.map((k) => '%$k%'), limit],
-      );
-      
-      return results.map((row) => PhraseEntry.fromMap(row)).toList();
-    });
+    final normalized = keywords.map((k) => k.toLowerCase().trim()).where((k) => k.isNotEmpty).toList();
+    if (normalized.isEmpty) return [];
+
+    final cache = _ensureLoaded(languagePair.toLowerCase());
+    var list = cache.bySource.values.where((e) {
+      final src = e.sourcePhrase;
+      final dst = e.targetPhrase.toLowerCase();
+      for (final k in normalized) {
+        if (src.contains(k) || dst.contains(k)) return true;
+      }
+      return false;
+    }).toList()
+      ..sort((a, b) {
+        final c = b.confidence.compareTo(a.confidence);
+        return c != 0 ? c : b.frequency.compareTo(a.frequency);
+      });
+
+    if (list.length > limit) list = list.sublist(0, limit);
+    return list;
+  }
+}
+
+class _PhraseLangCache {
+  final String lang;
+  final FileStorageService storage;
+  final Map<String, PhraseEntry> bySource = {};
+  int maxId = 0;
+
+  _PhraseLangCache(this.lang, this.storage) {
+    _load();
+  }
+
+  void _load() {
+    final file = storage.phrasesFile(lang);
+    if (!file.existsSync()) return;
+    final lines = file.readAsLinesSync();
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+      try {
+        final map = jsonDecode(line) as Map<String, dynamic>;
+        final entry = PhraseEntry.fromMap(map);
+        bySource[entry.sourcePhrase] = entry;
+        if (entry.id != null && entry.id! > maxId) maxId = entry.id!;
+      } catch (_) {
+        // skip
+      }
+    }
   }
 }

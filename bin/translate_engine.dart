@@ -3,6 +3,8 @@
 
 import 'commands/db_command.dart';
 import 'commands/import_command.dart';
+import 'commands/export_command.dart';
+import 'commands/validate_command.dart';
 import 'commands/base_command.dart';
 
 void printUsage() {
@@ -13,9 +15,11 @@ void printUsage() {
   print('  dart translate_engine <command> [options]  (if activated globally)');
   print('');
   print('Available commands:');
-  print('  db       Download and manage dictionary databases');
-  print('  import   Import dictionary data from files');
-  print('  help     Show this help message');
+  print('  db         Download and manage translation data files');
+  print('  import     Import dictionary data from files');
+  print('  export     Export data to files');
+  print('  validate   Validate data files');
+  print('  help       Show this help message');
   print('');
   print('Use "dart run bin/translate_engine.dart <command> --help" for command-specific help.');
 }
@@ -43,6 +47,12 @@ Future<int> main(List<String> args) async {
       break;
     case 'import':
       commandInstance = ImportCommand();
+      break;
+    case 'export':
+      commandInstance = ExportCommand();
+      break;
+    case 'validate':
+      commandInstance = ValidateCommand();
       break;
     case 'help':
       printUsage();

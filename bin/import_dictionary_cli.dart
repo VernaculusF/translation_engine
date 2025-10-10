@@ -1,21 +1,20 @@
 // ignore_for_file: avoid_print
-// CLI entrypoint that uses FFI database manager (no Flutter dependencies)
+// CLI entrypoint for dictionary import (file-based JSONL)
 import 'dart:io';
 
 import 'package:translation_engine/src/data/dictionary_repository.dart';
 import 'package:translation_engine/src/utils/cache_manager.dart';
-import 'package:translation_engine/src/data/database_manager_ffi.dart';
 import 'package:translation_engine/src/tools/dictionary_importer.dart';
 
 void printUsage() {
-  print('Dictionary Import CLI (FFI)');
+  print('Dictionary Import CLI (file-based)');
   print('');
   print('Usage:');
   print('  dart run bin/import_dictionary_cli.dart '
       '--db=<dir> --file=<path> --format=<csv|json|jsonl> --lang=<xx-yy> [--delimiter=,|;|\t]');
   print('');
   print('Options:');
-  print('  --db           Directory to store or locate databases');
+  print('  --db           Directory to store or locate translation_data');
   print('  --file         Input data file (CSV/JSON/JSONL)');
   print('  --format       Data format: csv | json | jsonl');
   print('  --lang         Language pair, e.g., en-ru');
@@ -56,13 +55,9 @@ Future<int> main(List<String> args) async {
     return 66; // EX_NOINPUT
   }
 
-  // Initialize repository on provided DB path using FFI manager
-  final dbManager = DatabaseManagerFfi(customDatabasePath: dbDir);
+  // Initialize file-based repository on provided data path
   final cache = CacheManager();
-  final repo = DictionaryRepository(databaseManager: dbManager, cacheManager: cache);
-
-  // Warm up the DB to ensure creation
-  await dbManager.checkAllDatabasesIntegrity();
+  final repo = DictionaryRepository(dataDirPath: dbDir, cacheManager: cache);
 
   final importer = DictionaryImporter(repository: repo);
   final report = await importer.importFile(file, languagePair: lang, format: format, delimiter: delimiter);

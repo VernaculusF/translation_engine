@@ -5,22 +5,21 @@
 import 'dart:io';
 import 'package:translation_engine/src/data/dictionary_repository.dart';
 import 'package:translation_engine/src/utils/cache_manager.dart';
-import 'package:translation_engine/src/data/database_manager_ffi.dart';
 
 void printUsage() {
-  print('Dictionary DB check (FFI)');
+  print('Data check (JSON/JSONL)');
   print('');
   print('Usage:');
   print('  dart run bin/check_database.dart --db=<dir> [--lang=en-ru] [--populate]');
   print('');
   print('Options:');
-  print('  --db         Directory where dictionaries.db/phrases.db/user_data.db are located');
+  print('  --db         Directory where translation_data resides');
   print('  --lang       Language pair to check (default: en-ru)');
-  print('  --populate   Insert a small set of test words if DB is empty');
+  print('  --populate   Insert a small set of test words if data is empty');
 }
 
 Future<void> main(List<String> args) async {
-  print('🔍 Проверка содержимого базы данных (FFI)');
+  print('🔍 Проверка содержимого файлового хранилища (JSONL)');
 
   final params = <String, String>{};
   for (final a in args) {
@@ -34,17 +33,15 @@ Future<void> main(List<String> args) async {
   final shouldPopulate = args.contains('--populate');
 
   if (dbDir == null || dbDir.isEmpty) {
-    print('❌ Не указан путь к директории БД');
+    print('❌ Не указан путь к директории данных');
     print('');
     printUsage();
     exit(64);
   }
 
   try {
-    // Инициализация компонентов (FFI менеджер, внешний путь)
-    final dbManager = DatabaseManagerFfi(customDatabasePath: dbDir);
     final cache = CacheManager();
-    final repo = DictionaryRepository(databaseManager: dbManager, cacheManager: cache);
+    final repo = DictionaryRepository(dataDirPath: dbDir, cacheManager: cache);
 
     // Проверяем статистику по языковой паре
     final stats = await repo.getLanguagePairStats(lang);
@@ -86,7 +83,7 @@ Future<void> main(List<String> args) async {
         print('ℹ️  Запустите с флагом --populate для добавления тестовых данных');
       }
     } else {
-      print('✅ В базе есть данные');
+      print('✅ Данные найдены');
       final topWords = await repo.getTopWords(lang, limit: 10);
       print('🔝 Топ слов:');
       for (final w in topWords) {

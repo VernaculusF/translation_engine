@@ -115,30 +115,32 @@ enum FormalityLevel { auto, informal, neutral, formal }
 enum TranslationDomain { general, technical, medical, legal, scientific, business, literary }
 ```
 
-## 4. Databases and Schemas
+## 4. Data files and schemas (JSON/JSONL)
 
-Databases are created in a folder (customDatabasePath). Three DB files are used:
+Data files are created in a folder (customDatabasePath, now used as data directory). Structure by default:
 
-- dictionaries.db
-  - words(id, source_word, target_word, language_pair, part_of_speech, definition, frequency, created_at, updated_at)
-  - word_cache(source_word, target_word, language_pair, last_used)
-- phrases.db
-  - phrases(id, source_phrase, target_phrase, language_pair, category, context, frequency, confidence, usage_count, created_at, updated_at)
-  - phrase_cache(source_phrase, target_phrase, language_pair, last_used)
-- user_data.db
-  - translation_history(id, original_text, translated_text, language_pair, confidence, processing_time_ms, timestamp, session_id, metadata)
-  - user_corrections(id, original_text, corrected_translation, lang_pair, created_at)
-  - user_settings(setting_key, setting_value, description, created_at, updated_at)
-  - user_translation_edits(id, original_text, original_translation, user_translation, language_pair, reason, is_approved, created_at, updated_at)
-  - context_cache(id, context_key, translation_result, language_pair, last_used)
+- translation_data/
+  - en-ru/
+    - dictionary.jsonl
+    - phrases.jsonl
+    - metadata.json (optional)
+  - user/
+    - translation_history.jsonl
+    - user_settings.json
+    - user_translation_edits.jsonl
 
-All schemas are created automatically by DatabaseManager.
+Formats:
+- dictionary.jsonl: one JSON object per line with fields: source_word, target_word, language_pair, part_of_speech?, definition?, frequency, created_at, updated_at, id?
+- phrases.jsonl: one JSON object per line: source_phrase, target_phrase, language_pair, category?, context?, confidence, frequency, created_at, updated_at, id?
+- translation_history.jsonl: original_text, translated_text, language_pair, confidence, processing_time_ms, timestamp, session_id?, metadata?
+- user_settings.json: map of setting_key -> {setting_key, setting_value, description?, created_at, updated_at}
+- user_translation_edits.jsonl: original_text, original_translation, user_translation, language_pair, reason?, is_approved(0/1), created_at, updated_at, id?
 
-## 5. Populating Databases
+## 5. Populating data
 
 ### 5.1 Automatic Data Download (Recommended)
 
-Use the new `db` command to automatically download and import translation data:
+Use the `db` command to automatically download and import translation data files (JSON/CSV/JSONL):
 
 - Download all available languages:
   `dart run bin/translate_engine.dart db`
@@ -152,13 +154,13 @@ Use the new `db` command to automatically download and import translation data:
 - Dry run (see what would be downloaded):
   `dart run bin/translate_engine.dart db --dry-run`
   
-- Custom database directory:
+- Custom data directory:
   `dart run bin/translate_engine.dart db --db=./my_data --lang=en-ru`
 
 ### 5.2 Manual Import from Local Files
 
 Dictionary importer
-- CLI (FFI, no Flutter UI deps):
+- CLI (no DB, file-based):
   - Windows PowerShell examples:
     - CSV:
       `dart run bin/translate_engine.dart import --db .\data --file .\datasets\dict.csv --format csv --lang en-ru --delimiter ,`
@@ -175,23 +177,7 @@ print(report.toMap());
 ```
 
 Bulk operations:
-- Use BaseRepository.executeTransaction to batch inserts/updates in a single transaction.
-- Example (dictionary bulk add):
-```dart path=null start=null
-final words = [
-  {'source': 'alpha', 'target': 'альфа'},
-  {'source': 'beta', 'target': 'бета'},
-];
-await dict.executeTransaction((conn) async {
-  for (final w in words) {
-    await conn.execute(
-      'INSERT INTO words (source_word, target_word, language_pair, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-      [w['source'], w['target'], 'en-ru', DateTime.now().millisecondsSinceEpoch, DateTime.now().millisecondsSinceEpoch],
-    );
-  }
-  return true;
-});
-```
+- For large batches you can pre-aggregate in memory and rewrite jsonl file once (repository rewrites the file on each insert/update for simplicity).
 
 User corrections (edits/settings/history):
 ```dart path=null start=null
@@ -213,29 +199,27 @@ final edits = await user.getTranslationEdits(languagePair: 'en-ru');
 
 Error handling in repositories:
 - ValidationException — invalid input
-- DatabaseInitException/DatabaseQueryException — DB initialization and query errors
 - Use try/catch and surface errors to UI/telemetry
 
 Use repositories for safe, validated inserts.
 
 - Dictionary entries
 ```dart path=null start=null
-final dict = DictionaryRepository(databaseManager: dbManager, cacheManager: cache);
+final dict = DictionaryRepository(dataDirPath: './translation_data', cacheManager: CacheManager());
 await dict.addTranslation('good', 'хороший', 'en-ru', partOfSpeech: 'adjective', frequency: 100);
 ```
 
 - Phrase entries
 ```dart path=null start=null
-final phrases = PhraseRepository(databaseManager: dbManager, cacheManager: cache);
+final phrases = PhraseRepository(dataDirPath: './translation_data', cacheManager: CacheManager());
 await phrases.addPhrase('good morning', 'доброе утро', 'en-ru', category: 'greetings', confidence: 95, frequency: 50);
 ```
 
 - User history/settings/edits
 ```dart path=null start=null
-final user = UserDataRepository(databaseManager: dbManager, cacheManager: cache);
+final user = UserDataRepository(dataDirPath: './translation_data', cacheManager: CacheManager());
 // settings
 await user.setSetting('default_language_pair', 'en-ru', description: 'Default translation pair');
-// history is typically added from a TranslationResult via a helper (not shown in engine yet)
 ```
 
 Normalization rules:

@@ -4,7 +4,7 @@ This file provides guidance to WARP (warp.dev) when working with code in this re
 
 ## Project Overview
 
-This is an offline translation engine for Flutter applications with a 6-layer processing pipeline. It uses SQLite databases for dictionary storage and provides both programmatic API and CLI tools for managing translation data.
+This is an offline translation engine for Flutter applications with a 6-layer processing pipeline. It uses JSON/JSONL files for dictionary/phrase/user data storage and provides both programmatic API and CLI tools for managing translation data.
 
 ## Key Commands
 
@@ -30,7 +30,7 @@ flutter test test/benchmarks/perf_report_test.dart
 
 ### CLI Operations
 ```powershell
-# Download translation databases (all languages)
+# Download translation data (all languages)
 dart run bin/translate_engine.dart db
 
 # Download specific language pair
@@ -64,10 +64,10 @@ dart run bin/translate_engine.dart import --db .\data --file .\datasets\dict.jso
 
 ### Data Layer Architecture
 
-**DatabaseManager**: Creates and manages 3 SQLite databases:
-- `dictionaries.db`: Word translations with metadata
-- `phrases.db`: Phrase/idiom translations
-- `user_data.db`: User history, corrections, settings
+**FileStorageService**: Manages JSON/JSONL files under translation_data directory:
+- `<lang>/dictionary.jsonl`: Word translations with metadata
+- `<lang>/phrases.jsonl`: Phrase/idiom translations
+- `user/*.json[l]`: User history, corrections, settings
 
 **Repositories**: Type-safe data access layers
 - `DictionaryRepository`: Word-level translation data
@@ -88,7 +88,7 @@ dart run bin/translate_engine.dart import --db .\data --file .\datasets\dict.jso
 
 - `lib/src/core/`: Main engine and pipeline logic
 - `lib/src/layers/`: 6 processing layers implementing BaseTranslationLayer
-- `lib/src/data/`: Database managers and repositories
+- `lib/src/data/`: File-based repositories
 - `lib/src/models/`: Data models (TranslationResult, LayerDebugInfo)
 - `lib/src/tools/`: Import utilities for dictionaries/phrases
 - `bin/`: CLI commands for data management
@@ -117,11 +117,11 @@ The `TranslationContext` object carries:
 - Performance benchmarks in `test/benchmarks/`
 - Database helpers for test isolation
 
-### Database Population
-Use the CLI for data import rather than manual SQL. The repositories handle validation and normalization:
+### Data Population
+Use the CLI for data import rather than manual edits. The repositories handle validation and normalization:
 - Words normalized to lowercase
 - Automatic timestamp management
-- Transaction wrapping for bulk operations
+- JSONL file rewrite on updates (simple, safe approach)
 - Cache invalidation on updates
 
 ## Performance Considerations
@@ -139,8 +139,7 @@ Use the CLI for data import rather than manual SQL. The repositories handle vali
 - Short-circuit on critical errors
 
 ### Memory Management
-- SQLite with connection pooling via DatabaseManager
-- Repositories use prepared statements
+- File I/O is buffered; repositories keep in-memory indexes per language pair
 - Cache limits prevent unbounded growth
 - Statistics tracking for monitoring
 
@@ -149,7 +148,7 @@ Use the CLI for data import rather than manual SQL. The repositories handle vali
 - `EngineInitializationException`: Setup failures
 - `EngineStateException`: Invalid state transitions
 - `LayerException`: Layer-specific processing errors
-- `DatabaseQueryException`: Data access issues
+- `DatabaseQueryException`: Data access issues (legacy, not used in file mode)
 - `ValidationException`: Invalid input data
 
 All errors include context for debugging and can be surfaced through the `TranslationResult.error()` factory.

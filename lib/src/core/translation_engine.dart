@@ -5,8 +5,8 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
-import '../data/database_manager.dart';
 import '../data/dictionary_repository.dart';
 import '../data/phrase_repository.dart';
 import '../data/user_data_repository.dart';
@@ -61,12 +61,14 @@ class TranslationEngine {
   static TranslationEngine? _instance;
   
   // Core components
-  late DatabaseManager _databaseManager;
   late CacheManager _cacheManager;
   late DictionaryRepository _dictionaryRepository;
   late PhraseRepository _phraseRepository;
   late UserDataRepository _userDataRepository;
   late TranslationPipeline _pipeline;
+
+  // Путь к данным JSONL
+  late String _dataPath;
   
   // State management
   EngineState _state = EngineState.uninitialized;
@@ -128,7 +130,7 @@ class TranslationEngine {
   
   /// Инициализация движка перевода
   /// 
-  /// [customDatabasePath] - опциональный путь к базе данных (для тестов)
+  /// [customDatabasePath] - опциональный путь к каталогу данных (JSONL). Совместимость с прежним именем параметра.
   /// [config] - конфигурация движка
   /// 
   /// Бросает [EngineInitializationException] при ошибке инициализации
@@ -147,27 +149,21 @@ class TranslationEngine {
     try {
       _setState(EngineState.initializing);
       
-      // Инициализация Data Layer компонентов
-      _databaseManager = DatabaseManager(customDatabasePath: customDatabasePath);
+      // Инициализация Data Layer компонентов (файловое хранилище)
+      _dataPath = customDatabasePath ?? Directory.current.uri.toFilePath() + 'translation_data';
       _cacheManager = CacheManager();
-      
-      // Проверка целостности баз данных (пока пропускаем)
-      // final isIntegrityOk = await _databaseManager.checkIntegrity();
-      // if (!isIntegrityOk) {
-      //   throw EngineInitializationException('Database integrity check failed');
-      // }
-      
-      // Инициализация репозиториев
+
+      // Инициализация репозиториев (файловые JSONL)
       _dictionaryRepository = DictionaryRepository(
-        databaseManager: _databaseManager, 
+        dataDirPath: _dataPath,
         cacheManager: _cacheManager,
       );
       _phraseRepository = PhraseRepository(
-        databaseManager: _databaseManager, 
+        dataDirPath: _dataPath,
         cacheManager: _cacheManager,
       );
       _userDataRepository = UserDataRepository(
-        databaseManager: _databaseManager, 
+        dataDirPath: _dataPath,
         cacheManager: _cacheManager,
       );
       
@@ -316,11 +312,6 @@ class TranslationEngine {
     _setState(EngineState.disposing);
     
     try {
-      // Закрытие баз данных
-      if (isInitialized) {
-        await _databaseManager.close();
-      }
-      
       // Закрытие stream controllers
       await _stateController.close();
       await _errorController.close();

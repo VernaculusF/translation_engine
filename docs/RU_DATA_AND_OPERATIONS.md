@@ -1,22 +1,15 @@
 # Руководство по языковым данным и эксплуатации ядра (RU)
 
-Это руководство описывает, как добавлять и обновлять языковые базы данных, эксплуатировать движок в продакшене, дополнять систему и развивать её.
+Это руководство описывает, как добавлять и обновлять языковые данные (JSON/JSONL), эксплуатировать движок в продакшене, дополнять систему и развивать её.
 
-## 1. Структура и типы БД
+## 1. Структура данных (JSON/JSONL)
 
-Движок использует 3 SQLite-базы, автоматически создаваемые DatabaseManager:
-- dictionaries.db — словарные пары слов
-  - words(id, source_word, target_word, language_pair, part_of_speech, definition, frequency, created_at, updated_at)
-  - word_cache(source_word, target_word, language_pair, last_used)
-- phrases.db — фразы и выражения
-  - phrases(id, source_phrase, target_phrase, language_pair, category, context, frequency, confidence, usage_count, created_at, updated_at)
-  - phrase_cache(source_phrase, target_phrase, language_pair, last_used)
-- user_data.db — пользовательские данные
-  - translation_history(id, original_text, translated_text, language_pair, confidence, processing_time_ms, timestamp, session_id, metadata)
-  - user_settings(setting_key, setting_value, description, created_at, updated_at)
-  - user_translation_edits(id, original_text, original_translation, user_translation, language_pair, reason, is_approved, created_at, updated_at)
-  - user_corrections(id, original_text, corrected_translation, lang_pair, created_at)
-  - context_cache(id, context_key, translation_result, language_pair, last_used)
+Движок использует файловое хранилище `translation_data/`:
+- `<lang>/dictionary.jsonl` — словарные пары слов (по одной JSON-строке на запись)
+- `<lang>/phrases.jsonl` — фразы и выражения
+- `user/translation_history.jsonl` — история переводов
+- `user/user_settings.json` — пользовательские настройки (map key->object)
+- `user/user_translation_edits.jsonl` — правки переводов
 
 ## 2. Как добавить языковые данные
 
@@ -103,18 +96,7 @@ await dictionaryRepo.addTranslation('hello', 'привет', 'en-ru', partOfSpee
 final exact = await dictionaryRepo.getTranslation('hello', 'en-ru');
 final search = await dictionaryRepo.searchByWord('he', 'en-ru');
 ```
-- Bulk-вставка (рекомендовано через транзакцию):
-```dart path=null start=null
-await dictionaryRepo.executeTransaction((conn) async {
-  for (final w in words) {
-    await conn.execute(
-      'INSERT INTO words (source_word, target_word, language_pair, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-      [w.source, w.target, 'en-ru', now, now],
-    );
-  }
-  return true;
-});
-```
+- Массовые вставки: агрегируйте данные в памяти и вызывайте `addTranslation` в цикле; репозиторий переписывает jsonl-файл после серии вставок.
 
 ### 2.2. Фразы (PhraseRepository)
 - Нормализация: source_phrase приводится к нижнему регистру, пробелы схлопываются.
@@ -147,7 +129,7 @@ final edits = await userDataRepo.getTranslationEdits(languagePair: 'en-ru');
   - Поддерживать миграции в DatabaseManager (onUpgrade)
   - Делать backup перед миграцией (копия файлов *.db)
 
-## 4. Эксплуатация и мониторинг
+## 3. Эксплуатация и мониторинг
 - Ресурсы:
   - Для небольших объемов (<=10k слов): ~128MB RAM достаточно
   - Для средних (<=50k элементов): 256MB+ и, при необходимости, изменённые лимиты кэша
@@ -159,7 +141,7 @@ final edits = await userDataRepo.getTranslationEdits(languagePair: 'en-ru');
   - TranslationResult.performanceReport — на транзакцию
   - Экспорт в APM (Prometheus, Grafana) через адаптер на стороне приложения
 
-## 5. Безопасность и валидация
+## 4. Безопасность и валидация
 - Ввод:
   - Ограничивать длину текста (<=10k символов на запрос)
   - Валидировать языковые коды (ISO 639-1) и пары
@@ -170,7 +152,7 @@ final edits = await userDataRepo.getTranslationEdits(languagePair: 'en-ru');
   - debugMode=off в проде, не логировать контент на INFO
   - Хранение истории — дать пользователю возможность выключить
 
-## 6. Расширение и развитие
+## 5. Расширение и развитие
 - Слои:
   - Добавлять новые правила в Grammar/WordOrder/PostProcessing и покрывать тестами
   - Для новых языков — расширять словари/фразы и правила word order
@@ -181,7 +163,7 @@ final edits = await userDataRepo.getTranslationEdits(languagePair: 'en-ru');
   - Анализатор + тесты на PR
   - Отчеты о перфе на nightly или вручную
 
-## 7. Практические рекомендации
+## 6. Практические рекомендации
 - Инициализировать Engine при старте приложения
 - Переиспользовать singleton Engine
 - Делать дебаунс вызовов translate() в UI

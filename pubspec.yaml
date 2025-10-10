@@ -1,6 +1,6 @@
 name: translation_engine
-description: "Offline translation engine for Flutter with layered processing, dictionary management, and phrase translation support."
-version: 0.0.4
+description: "Offline translation engine for Flutter with layered processing, dictionary/phrase management, and JSON-file based storage."
+version: 2.0.0
 homepage: https://github.com/VernaculusF/translation_engine
 repository: https://github.com/VernaculusF/translation_engine
 
@@ -11,10 +11,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  path_provider: ^2.1.5
-  sqflite: ^2.4.2
   path: ^1.8.3
-  sqflite_common_ffi: ^2.3.1
   http: ^1.1.0
 
 dev_dependencies:

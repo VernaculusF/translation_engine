@@ -3,23 +3,22 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
-import 'package:translation_engine/src/data/database_manager_ffi.dart';
 import 'package:translation_engine/src/data/dictionary_repository.dart';
 import 'package:translation_engine/src/utils/cache_manager.dart';
 
 void printUsage() {
-  print('Populate dictionary with test data (FFI)');
+  print('Populate dictionary with test data (JSONL)');
   print('');
   print('Usage:');
   print('  dart run bin/populate_dictionary.dart --db=<dir> [--lang=en-ru]');
   print('');
   print('Options:');
-  print('  --db     Directory where dictionaries.db resides (external repo path)');
+  print('  --db     Directory where translation_data resides');
   print('  --lang   Language pair (default: en-ru)');
 }
 
 Future<void> main(List<String> args) async {
-  print('📝 Заполнение словаря тестовыми данными (только во внешнюю БД)');
+  print('📝 Заполнение словаря тестовыми данными (JSONL)');
 
   final params = <String, String>{};
   for (final a in args) {
@@ -32,16 +31,15 @@ Future<void> main(List<String> args) async {
   final lang = params['lang'] ?? 'en-ru';
 
   if (dbDir == null || dbDir.isEmpty) {
-    print('❌ Не указан путь к директории БД');
+    print('❌ Не указан путь к директории данных');
     print('');
     printUsage();
     exit(64);
   }
 
   try {
-    final dbManager = DatabaseManagerFfi(customDatabasePath: dbDir);
     final cache = CacheManager();
-    final repo = DictionaryRepository(databaseManager: dbManager, cacheManager: cache);
+    final repo = DictionaryRepository(dataDirPath: dbDir, cacheManager: cache);
 
     final testData = <Map<String, dynamic>>[
       {'source': 'hello', 'target': 'привет', 'pos': 'interjection', 'freq': 500},
@@ -78,7 +76,7 @@ Future<void> main(List<String> args) async {
       }
     }
   } catch (e, st) {
-    print('❌ Ошибка заполнения БД: $e');
+    print('❌ Ошибка заполнения данных: $e');
     print(st);
     exit(1);
   }

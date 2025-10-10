@@ -1,8 +1,8 @@
 
 import 'dart:convert';
-import 'base_repository.dart';
 import '../models/translation_result.dart';
-import 'database_types.dart';
+import '../utils/cache_manager.dart';
+import '../storage/file_storage.dart';
 
 /// Модель истории переводов пользователя
 class TranslationHistoryEntry {
@@ -261,36 +261,26 @@ class UserTranslationEdit {
   }
 }
 
-/// Репозиторий для пользовательских данных
-class UserDataRepository extends BaseRepository {
+/// Репозиторий для пользовательских данных (файловое хранилище JSON/JSONL)
+class UserDataRepository {
   static const String _cachePrefix = 'user_data:';
-  static const String _historyTableName = 'translation_history';
-  static const String _settingsTableName = 'user_settings';
-  static const String _editsTableName = 'user_translation_edits';
-  
+
+  final CacheManager cacheManager;
+  final FileStorageService storage;
+
   UserDataRepository({
-    required super.databaseManager,
-    required super.cacheManager,
-  });
-  
-  @override
-  String get tableName => _historyTableName; // основная таблица по умолчанию
-  
-  @override
-  DatabaseType get databaseType => DatabaseType.userData;
-  
-  @override
+    required String dataDirPath,
+    required this.cacheManager,
+  }) : storage = FileStorageService(rootDir: dataDirPath);
+
   String generateCacheKey(Map<String, dynamic> params) {
     final type = params['type'] as String? ?? 'history';
     final identifier = params['identifier'] as String? ?? 'default';
     final hash = params.hashCode.toString();
-    
     return '$_cachePrefix$type:$identifier:$hash';
   }
-  
-  @override
+
   void clearCache() {
-    // Очистить только ключи пользовательских данных
     final allKeys = cacheManager.getAllKeys();
     for (final key in allKeys) {
       if (key.startsWith(_cachePrefix)) {
@@ -298,41 +288,38 @@ class UserDataRepository extends BaseRepository {
       }
     }
   }
-  
+
   // === ИСТОРИЯ ПЕРЕВОДОВ ===
-  
+
   /// Добавить запись в историю переводов
   Future<TranslationHistoryEntry> addToHistory(
     TranslationResult translationResult, {
     String? sessionId,
   }) async {
+    // Определяем следующий id для истории (инкрементально)
+    int maxId = 0;
+    final file = storage.userHistoryFile();
+    if (file.existsSync()) {
+      for (final line in file.readAsLinesSync()) {
+        if (line.trim().isEmpty) continue;
+        try {
+          final obj = jsonDecode(line) as Map<String, dynamic>;
+          final id = obj['id'] as int?;
+          if (id != null && id > maxId) maxId = id;
+        } catch (_) {}
+      }
+    }
+
     final entry = TranslationHistoryEntry.fromTranslationResult(
       translationResult,
       sessionId: sessionId,
     );
-    
-    return executeTransaction((connection) async {
-      final data = entry.toMap();
-      
-      final insertId = await connection.execute(
-        'INSERT INTO $_historyTableName (original_text, translated_text, language_pair, confidence, processing_time_ms, timestamp, session_id, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          data['original_text'],
-          data['translated_text'],
-          data['language_pair'],
-          data['confidence'],
-          data['processing_time_ms'],
-          data['timestamp'],
-          data['session_id'],
-          data['metadata']?.toString(),
-        ],
-      );
-      
-      return TranslationHistoryEntry.fromMap({
-        ...data,
-        'id': insertId,
-      });
-    });
+    final data = entry.toMap();
+    data['id'] = maxId + 1;
+
+    await storage.ensureUserDir();
+    await storage.appendJsonLine(file, data);
+    return TranslationHistoryEntry.fromMap(data);
   }
   
   /// Получить историю переводов
@@ -354,54 +341,31 @@ class UserDataRepository extends BaseRepository {
       'limit': limit,
       'offset': offset,
     });
-    
-    // Попробовать получить из кэша
-    final cached = getCached<List<TranslationHistoryEntry>>(cacheKey);
-    if (cached != null) {
-      return cached;
+
+    final cached = cacheManager.get<List<TranslationHistoryEntry>>(cacheKey);
+    if (cached != null) return cached;
+
+    final file = storage.userHistoryFile();
+    final entries = <TranslationHistoryEntry>[];
+    await for (final obj in storage.readJsonLines(file)) {
+      try {
+        final e = TranslationHistoryEntry.fromMap(obj);
+        if (languagePair != null && e.languagePair.toLowerCase() != languagePair.toLowerCase()) continue;
+        if (sessionId != null && e.sessionId != sessionId) continue;
+        if (fromDate != null && e.timestamp.isBefore(fromDate)) continue;
+        if (toDate != null && e.timestamp.isAfter(toDate)) continue;
+        entries.add(e);
+      } catch (_) {
+        // skip
+      }
     }
-    
-    return executeQuery((connection) async {
-      String query = 'SELECT * FROM $_historyTableName WHERE 1=1';
-      List<dynamic> params = [];
-      
-      if (languagePair != null) {
-        query += ' AND language_pair = ?';
-        params.add(languagePair.toLowerCase());
-      }
-      
-      if (sessionId != null) {
-        query += ' AND session_id = ?';
-        params.add(sessionId);
-      }
-      
-      if (fromDate != null) {
-        query += ' AND timestamp >= ?';
-        params.add(fromDate.millisecondsSinceEpoch);
-      }
-      
-      if (toDate != null) {
-        query += ' AND timestamp <= ?';
-        params.add(toDate.millisecondsSinceEpoch);
-      }
-      
-      query += ' ORDER BY timestamp DESC';
-      
-      if (limit != null) {
-        query += ' LIMIT $limit';
-        if (offset != null && offset > 0) {
-          query += ' OFFSET $offset';
-        }
-      }
-      
-      final results = await connection.query(query, params);
-      final entries = results.map((row) => TranslationHistoryEntry.fromMap(row)).toList();
-      
-      // Сохранить в кэш
-      setCached(cacheKey, entries);
-      
-      return entries;
-    });
+    entries.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    var list = entries;
+    if (offset != null && offset > 0 && offset < list.length) list = list.sublist(offset);
+    if (limit != null && limit < list.length) list = list.sublist(0, limit);
+
+    cacheManager.set(cacheKey, list);
+    return list;
   }
   
   /// Получить статистику истории переводов
@@ -410,97 +374,88 @@ class UserDataRepository extends BaseRepository {
     DateTime? fromDate,
     DateTime? toDate,
   }) async {
-    return executeQuery((connection) async {
-      String query = '''
-        SELECT 
-          COUNT(*) as total_translations,
-          AVG(confidence) as avg_confidence,
-          AVG(processing_time_ms) as avg_processing_time,
-          COUNT(DISTINCT language_pair) as language_pairs_count,
-          COUNT(DISTINCT session_id) as sessions_count
-        FROM $_historyTableName 
-        WHERE 1=1
-      ''';
-      
-      List<dynamic> params = [];
-      
-      if (languagePair != null) {
-        query += ' AND language_pair = ?';
-        params.add(languagePair.toLowerCase());
-      }
-      
-      if (fromDate != null) {
-        query += ' AND timestamp >= ?';
-        params.add(fromDate.millisecondsSinceEpoch);
-      }
-      
-      if (toDate != null) {
-        query += ' AND timestamp <= ?';
-        params.add(toDate.millisecondsSinceEpoch);
-      }
-      
-      final results = await connection.query(query, params);
-      
-      if (results.isEmpty) {
-        return {
-          'total_translations': 0,
-          'avg_confidence': 0.0,
-          'avg_processing_time': 0.0,
-          'language_pairs_count': 0,
-          'sessions_count': 0,
-        };
-      }
-      
-      final row = results.first;
+    final file = storage.userHistoryFile();
+    int total = 0;
+    double confSum = 0;
+    double timeSum = 0;
+    final langSet = <String>{};
+    final sessionSet = <String>{};
+
+    await for (final obj in storage.readJsonLines(file)) {
+      try {
+        final e = TranslationHistoryEntry.fromMap(obj);
+        if (languagePair != null && e.languagePair.toLowerCase() != languagePair.toLowerCase()) continue;
+        if (fromDate != null && e.timestamp.isBefore(fromDate)) continue;
+        if (toDate != null && e.timestamp.isAfter(toDate)) continue;
+        total++;
+        confSum += e.confidence;
+        timeSum += e.processingTimeMs;
+        langSet.add(e.languagePair.toLowerCase());
+        if (e.sessionId != null) sessionSet.add(e.sessionId!);
+      } catch (_) {}
+    }
+
+    if (total == 0) {
       return {
-        'total_translations': row['total_translations'] as int,
-        'avg_confidence': (row['avg_confidence'] as num?)?.toDouble() ?? 0.0,
-        'avg_processing_time': (row['avg_processing_time'] as num?)?.toDouble() ?? 0.0,
-        'language_pairs_count': row['language_pairs_count'] as int? ?? 0,
-        'sessions_count': row['sessions_count'] as int? ?? 0,
+        'total_translations': 0,
+        'avg_confidence': 0.0,
+        'avg_processing_time': 0.0,
+        'language_pairs_count': 0,
+        'sessions_count': 0,
       };
-    });
+    }
+
+    return {
+      'total_translations': total,
+      'avg_confidence': confSum / total,
+      'avg_processing_time': timeSum / total,
+      'language_pairs_count': langSet.length,
+      'sessions_count': sessionSet.length,
+    };
   }
   
   /// Очистить историю переводов старше указанной даты
   Future<int> clearHistoryOlderThan(DateTime date) async {
-    return await delete({
-      'timestamp': '< ${date.millisecondsSinceEpoch}',
-    });
+    final file = storage.userHistoryFile();
+    if (!file.existsSync()) return 0;
+    final keep = <Map<String, dynamic>>[];
+    int removed = 0;
+    for (final line in file.readAsLinesSync()) {
+      if (line.trim().isEmpty) continue;
+      try {
+        final obj = jsonDecode(line) as Map<String, dynamic>;
+        final ts = DateTime.fromMillisecondsSinceEpoch(obj['timestamp'] as int);
+        if (ts.isBefore(date)) {
+          removed++;
+        } else {
+          keep.add(obj);
+        }
+      } catch (_) {}
+    }
+    await storage.rewriteJsonLines(file, keep);
+    return removed;
   }
   
   // === ПОЛЬЗОВАТЕЛЬСКИЕ НАСТРОЙКИ ===
   
   /// Получить настройку по ключу
   Future<UserSettings?> getSetting(String key) async {
-    final cacheKey = generateCacheKey({
-      'type': 'setting',
-      'identifier': key,
-    });
-    
-    // Попробовать получить из кэша
-    final cached = getCached<UserSettings>(cacheKey);
-    if (cached != null) {
-      return cached;
-    }
-    
-    return executeQuery((connection) async {
-      final results = await connection.query(
-        'SELECT * FROM $_settingsTableName WHERE setting_key = ?',
-        [key],
-      );
-      
-      if (results.isEmpty) {
-        return null;
-      }
-      
-      final setting = UserSettings.fromMap(results.first);
-      
-      // Сохранить в кэш
-      setCached(cacheKey, setting);
-      
+    final cacheKey = generateCacheKey({'type': 'setting', 'identifier': key});
+    final cached = cacheManager.get<UserSettings>(cacheKey);
+    if (cached != null) return cached;
+
+    final file = storage.userSettingsFile();
+    if (!file.existsSync()) return null;
+    try {
+      final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      final obj = json[key];
+      if (obj == null) return null;
+      final setting = UserSettings.fromMap(obj as Map<String, dynamic>);
+      cacheManager.set(cacheKey, setting);
       return setting;
-    });
+    } catch (_) {
+      return null;
+    }
   }
   
   /// Установить настройку
@@ -509,90 +464,79 @@ class UserDataRepository extends BaseRepository {
     dynamic value, {
     String? description,
   }) async {
-    return executeTransaction((connection) async {
-      final now = DateTime.now();
-      final existing = await connection.query(
-        'SELECT * FROM $_settingsTableName WHERE setting_key = ?',
-        [key],
-      );
-      
-      UserSettings result;
-      
-      if (existing.isNotEmpty) {
-        // Обновить существующую настройку
-        await connection.execute(
-          'UPDATE $_settingsTableName SET setting_value = ?, description = ?, updated_at = ? WHERE setting_key = ?',
-          [value, description, now.millisecondsSinceEpoch, key],
-        );
-        
-        result = UserSettings(
-          // user_settings table uses setting_key as PK, no numeric id
-          id: null,
-          key: key,
-          value: value,
-          description: description ?? existing.first['description'] as String?,
-          createdAt: DateTime.fromMillisecondsSinceEpoch(existing.first['created_at'] as int),
-          updatedAt: now,
-        );
-      } else {
-        // Создать новую настройку
-        final insertId = await connection.execute(
-          'INSERT INTO $_settingsTableName (setting_key, setting_value, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-          [key, value, description, now.millisecondsSinceEpoch, now.millisecondsSinceEpoch],
-        );
-        
-        result = UserSettings(
-          id: insertId,
-          key: key,
-          value: value,
-          description: description,
-          createdAt: now,
-          updatedAt: now,
-        );
+    final file = storage.userSettingsFile();
+    final now = DateTime.now();
+    Map<String, dynamic> jsonMap = {};
+    if (file.existsSync()) {
+      try {
+        jsonMap = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      } catch (_) {
+        jsonMap = {};
       }
-      
-      // Обновить кэш
-      final cacheKey = generateCacheKey({
-        'type': 'setting',
-        'identifier': key,
-      });
-      setCached(cacheKey, result);
-      
-      return result;
-    });
+    }
+    final existing = jsonMap[key] as Map<String, dynamic>?;
+    late UserSettings result;
+    if (existing != null) {
+      result = UserSettings(
+        id: existing['id'] as int?,
+        key: key,
+        value: value,
+        description: description ?? existing['description'] as String?,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(existing['created_at'] as int),
+        updatedAt: now,
+      );
+    } else {
+      result = UserSettings(
+        id: null,
+        key: key,
+        value: value,
+        description: description,
+        createdAt: now,
+        updatedAt: now,
+      );
+    }
+    jsonMap[key] = result.toMap();
+    await storage.ensureUserDir();
+    file.writeAsStringSync(jsonEncode(jsonMap));
+
+    final cacheKey = generateCacheKey({'type': 'setting', 'identifier': key});
+    cacheManager.set(cacheKey, result);
+    return result;
   }
   
   /// Получить все настройки
   Future<List<UserSettings>> getAllSettings() async {
-    return executeQuery((connection) async {
-      final results = await connection.query(
-        'SELECT * FROM $_settingsTableName ORDER BY setting_key',
-      );
-      
-      return results.map((row) => UserSettings.fromMap(row)).toList();
-    });
+    final file = storage.userSettingsFile();
+    if (!file.existsSync()) return [];
+    try {
+      final jsonMap = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      final list = <UserSettings>[];
+      for (final entry in jsonMap.entries) {
+        final obj = entry.value as Map<String, dynamic>;
+        list.add(UserSettings.fromMap(obj));
+      }
+      list.sort((a, b) => a.key.compareTo(b.key));
+      return list;
+    } catch (_) {
+      return [];
+    }
   }
   
   /// Удалить настройку
   Future<bool> deleteSetting(String key) async {
-    final result = await executeTransaction((connection) async {
-      return await connection.execute(
-        'DELETE FROM $_settingsTableName WHERE setting_key = ?',
-        [key],
-      );
-    });
-    
-    if (result > 0) {
-      // Удалить из кэша
-      final cacheKey = generateCacheKey({
-        'type': 'setting',
-        'identifier': key,
-      });
-      removeCached(cacheKey);
+    final file = storage.userSettingsFile();
+    if (!file.existsSync()) return false;
+    try {
+      final jsonMap = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      if (!jsonMap.containsKey(key)) return false;
+      jsonMap.remove(key);
+      file.writeAsStringSync(jsonEncode(jsonMap));
+      final cacheKey = generateCacheKey({'type': 'setting', 'identifier': key});
+      cacheManager.remove(cacheKey);
       return true;
+    } catch (_) {
+      return false;
     }
-    
-    return false;
   }
   
   // === ПОЛЬЗОВАТЕЛЬСКИЕ ПРАВКИ ===
@@ -606,7 +550,21 @@ class UserDataRepository extends BaseRepository {
     String? reason,
   }) async {
     final now = DateTime.now();
+    // Определим следующий id
+    int maxId = 0;
+    final file = storage.userEditsFile();
+    if (file.existsSync()) {
+      for (final line in file.readAsLinesSync()) {
+        if (line.trim().isEmpty) continue;
+        try {
+          final obj = jsonDecode(line) as Map<String, dynamic>;
+          final id = obj['id'] as int?;
+          if (id != null && id > maxId) maxId = id;
+        } catch (_) {}
+      }
+    }
     final edit = UserTranslationEdit(
+      id: maxId + 1,
       originalText: originalText,
       originalTranslation: originalTranslation,
       userTranslation: userTranslation,
@@ -615,29 +573,9 @@ class UserDataRepository extends BaseRepository {
       createdAt: now,
       updatedAt: now,
     );
-    
-    return executeTransaction((connection) async {
-      final data = edit.toMap();
-      
-      final insertId = await connection.execute(
-        'INSERT INTO $_editsTableName (original_text, original_translation, user_translation, language_pair, reason, is_approved, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          data['original_text'],
-          data['original_translation'],
-          data['user_translation'],
-          data['language_pair'],
-          data['reason'],
-          data['is_approved'],
-          data['created_at'],
-          data['updated_at'],
-        ],
-      );
-      
-      return UserTranslationEdit.fromMap({
-        ...data,
-        'id': insertId,
-      });
-    });
+    await storage.ensureUserDir();
+    await storage.appendJsonLine(file, edit.toMap());
+    return edit;
   }
   
   /// Получить пользовательские правки
@@ -647,44 +585,46 @@ class UserDataRepository extends BaseRepository {
     int? limit = 50,
     int? offset = 0,
   }) async {
-    return executeQuery((connection) async {
-      String query = 'SELECT * FROM $_editsTableName WHERE 1=1';
-      List<dynamic> params = [];
-      
-      if (languagePair != null) {
-        query += ' AND language_pair = ?';
-        params.add(languagePair.toLowerCase());
-      }
-      
-      if (onlyApproved != null) {
-        query += ' AND is_approved = ?';
-        params.add(onlyApproved ? 1 : 0);
-      }
-      
-      query += ' ORDER BY created_at DESC';
-      
-      if (limit != null) {
-        query += ' LIMIT $limit';
-        if (offset != null && offset > 0) {
-          query += ' OFFSET $offset';
-        }
-      }
-      
-      final results = await connection.query(query, params);
-      return results.map((row) => UserTranslationEdit.fromMap(row)).toList();
-    });
+    final file = storage.userEditsFile();
+    final list = <UserTranslationEdit>[];
+    if (!file.existsSync()) return list;
+    for (final line in file.readAsLinesSync()) {
+      if (line.trim().isEmpty) continue;
+      try {
+        final obj = jsonDecode(line) as Map<String, dynamic>;
+        final e = UserTranslationEdit.fromMap(obj);
+        if (languagePair != null && e.languagePair.toLowerCase() != languagePair.toLowerCase()) continue;
+        if (onlyApproved != null && e.isApproved != onlyApproved) continue;
+        list.add(e);
+      } catch (_) {}
+    }
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    var out = list;
+    if (offset != null && offset > 0 && offset < out.length) out = out.sublist(offset);
+    if (limit != null && limit < out.length) out = out.sublist(0, limit);
+    return out;
   }
   
   /// Одобрить пользовательскую правку
   Future<bool> approveTranslationEdit(int editId) async {
-    final result = await executeTransaction((connection) async {
-      return await connection.execute(
-        'UPDATE $_editsTableName SET is_approved = 1, updated_at = ? WHERE id = ?',
-        [DateTime.now().millisecondsSinceEpoch, editId],
-      );
-    });
-    
-    return result > 0;
+    final file = storage.userEditsFile();
+    if (!file.existsSync()) return false;
+    final items = <Map<String, dynamic>>[];
+    var changed = false;
+    for (final line in file.readAsLinesSync()) {
+      if (line.trim().isEmpty) continue;
+      try {
+        final obj = jsonDecode(line) as Map<String, dynamic>;
+        if ((obj['id'] as int?) == editId) {
+          obj['is_approved'] = 1;
+          obj['updated_at'] = DateTime.now().millisecondsSinceEpoch;
+          changed = true;
+        }
+        items.add(obj);
+      } catch (_) {}
+    }
+    if (changed) await storage.rewriteJsonLines(file, items);
+    return changed;
   }
   
   /// Поиск пользовательских правок по тексту
@@ -692,17 +632,18 @@ class UserDataRepository extends BaseRepository {
     String originalText,
     String languagePair,
   ) async {
-    return executeQuery((connection) async {
-      final results = await connection.query(
-        'SELECT * FROM $_editsTableName WHERE original_text = ? AND language_pair = ? AND is_approved = 1 ORDER BY updated_at DESC LIMIT 1',
-        [originalText.toLowerCase(), languagePair.toLowerCase()],
-      );
-      
-      if (results.isEmpty) {
-        return null;
-      }
-      
-      return UserTranslationEdit.fromMap(results.first);
-    });
+    final file = storage.userEditsFile();
+    if (!file.existsSync()) return null;
+    for (final line in file.readAsLinesSync().reversed) {
+      if (line.trim().isEmpty) continue;
+      try {
+        final obj = jsonDecode(line) as Map<String, dynamic>;
+        final e = UserTranslationEdit.fromMap(obj);
+        if (e.isApproved && e.originalText == originalText && e.languagePair.toLowerCase() == languagePair.toLowerCase()) {
+          return e;
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 }

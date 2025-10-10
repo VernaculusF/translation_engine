@@ -6,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:translation_engine/src/data/dictionary_repository.dart';
 import 'package:translation_engine/src/data/phrase_repository.dart';
 import 'package:translation_engine/src/utils/cache_manager.dart';
-import 'package:translation_engine/src/data/database_manager_ffi.dart';
 import 'package:translation_engine/src/tools/dictionary_importer.dart';
 import 'package:translation_engine/src/tools/phrase_importer.dart';
 import 'base_command.dart';
@@ -19,13 +18,13 @@ static const String githubApiRepo = 'https://api.github.com/repos/VernaculusF/tr
   String get name => 'db';
   
   @override
-  String get description => 'Download and manage dictionary databases';
+  String get description => 'Download and manage translation data files (JSON/CSV/JSONL)';
   
   @override
   void printUsage() {
-    print('Database Management Command');
+    print('Data Management Command');
     print('');
-    print('Download and manage translation dictionaries from remote repository.');
+    print('Download and manage translation data (dictionary/phrases) from remote repository.');
     print('');
     print('Usage:');
     print('  dart run bin/translate_engine.dart db [--lang=<xx-yy>] [--db=<dir>] [options]');
@@ -33,7 +32,7 @@ static const String githubApiRepo = 'https://api.github.com/repos/VernaculusF/tr
     print('Options:');
     print('  --lang         Language pair to download (e.g., en-ru, es-en)');
     print('                 If not specified, downloads all available languages');
-    print('  --db           Directory to store databases (default: ./translation_data)');
+    print('  --db           Directory to store data (default: ./translation_data)');
     print('  --source       Custom data repository URL');
     print('  --list         List available language pairs without downloading');
     print('  --force        Force re-download even if files exist');
@@ -75,7 +74,7 @@ static const String githubApiRepo = 'https://api.github.com/repos/VernaculusF/tr
     final force = params.containsKey('force');
     final dryRun = params.containsKey('dry-run');
     
-    print('Translation Engine - Database Management');
+    print('Translation Engine - Data Management');
     print('');
     print('Source: $source');
     print('Database directory: $dbDir');
@@ -299,14 +298,11 @@ static const String githubApiRepo = 'https://api.github.com/repos/VernaculusF/tr
         return false;
       }
       
-      // Initialize database
-      final dbManager = DatabaseManagerFfi(customDatabasePath: dbDir);
+      // Initialize file-based repositories
       final cache = CacheManager();
-      final dictRepo = DictionaryRepository(databaseManager: dbManager, cacheManager: cache);
-      final phraseRepo = PhraseRepository(databaseManager: dbManager, cacheManager: cache);
-      
-      await dbManager.checkAllDatabasesIntegrity();
-      
+      final dictRepo = DictionaryRepository(dataDirPath: dbDir, cacheManager: cache);
+      final phraseRepo = PhraseRepository(dataDirPath: dbDir, cacheManager: cache);
+
       // Import downloaded files
       for (final file in downloadedFiles) {
         final fileName = file.path.split(Platform.pathSeparator).last;

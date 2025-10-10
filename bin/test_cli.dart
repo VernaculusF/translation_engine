@@ -3,7 +3,6 @@
 // ignore_for_file: avoid_print, avoid_relative_lib_imports
 
 import 'dart:io';
-import '../lib/src/data/database_manager_ffi.dart';
 import '../lib/src/data/dictionary_repository.dart';  
 import '../lib/src/data/phrase_repository.dart';
 import '../lib/src/data/user_data_repository.dart';
@@ -19,7 +18,7 @@ void printUsage() {
 }
 
 Future<void> main(List<String> arguments) async {
-  print('🔍 CLI тестирование TranslationEngine без Flutter');
+  print('🔍 CLI тестирование TranslationEngine (file-based)');
 
   // Parse simple args
   String? dbDir;
@@ -42,23 +41,20 @@ Future<void> main(List<String> arguments) async {
 
   try {
     print('📦 Создание компонентов движка...');
-    
-    // Создаем компоненты напрямую с FFI database manager
-    final databaseManager = DatabaseManagerFfi(customDatabasePath: dbDir);
     final cacheManager = CacheManager();
-    
+
     final dictionaryRepository = DictionaryRepository(
-      databaseManager: databaseManager,
+      dataDirPath: dbDir ?? './translation_data',
       cacheManager: cacheManager,
     );
-    
+
     final phraseRepository = PhraseRepository(
-      databaseManager: databaseManager,
+      dataDirPath: dbDir ?? './translation_data',
       cacheManager: cacheManager,
     );
-    
+
     final userDataRepository = UserDataRepository(
-      databaseManager: databaseManager,
+      dataDirPath: dbDir ?? './translation_data',
       cacheManager: cacheManager,
     );
     
@@ -106,9 +102,7 @@ Future<void> main(List<String> arguments) async {
       }
     }
     
-    print('\n🧹 Очистка ресурсов...');
-    await databaseManager.reset();
-    print('✅ Ресурсы очищены');
+    print('\n🧹 Очистка завершена');
     
   } catch (e, stackTrace) {
     print('❌ Критическая ошибка: $e');

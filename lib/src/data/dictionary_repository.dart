@@ -1,6 +1,7 @@
-import 'base_repository.dart';
+import 'dart:convert';
 import '../utils/exceptions.dart';
-import 'database_types.dart';
+import '../utils/cache_manager.dart';
+import '../storage/file_storage.dart';
 
 /// Модель записи словаря
 class DictionaryEntry {
@@ -99,40 +100,39 @@ class DictionaryEntry {
   int get hashCode => Object.hash(sourceWord, targetWord, languagePair);
 }
 
-/// Репозиторий для работы со словарями
-class DictionaryRepository extends BaseRepository {
+/// Репозиторий для работы со словарями (файловое хранилище JSONL)
+class DictionaryRepository {
   static const String _cachePrefix = 'dict:';
-  
+
+  final CacheManager cacheManager;
+  final FileStorageService storage;
+
   DictionaryRepository({
-    required super.databaseManager,
-    required super.cacheManager,
-  });
-  
-  @override
-  String get tableName => 'words';
-  
-  @override
-  DatabaseType get databaseType => DatabaseType.dictionaries;
-  
-  @override
+    required String dataDirPath,
+    required this.cacheManager,
+  }) : storage = FileStorageService(rootDir: dataDirPath);
+
+  // В памяти поддерживаем индекс по языковой паре
+  final Map<String, _DictLangCache> _langCaches = {};
+
+  _DictLangCache _ensureLoaded(String languagePair) {
+    final lang = languagePair.toLowerCase();
+    return _langCaches.putIfAbsent(lang, () => _DictLangCache(lang, storage));
+  }
+
   String generateCacheKey(Map<String, dynamic> params) {
     final sourceWord = params['sourceWord'] as String?;
     final languagePair = params['languagePair'] as String?;
     final searchType = params['searchType'] as String? ?? 'exact';
-    
     if (sourceWord != null && languagePair != null) {
       return '$_cachePrefix$searchType:$languagePair:${sourceWord.toLowerCase()}';
     }
-    
-    // Для других типов запросов
     final queryType = params['queryType'] as String? ?? 'unknown';
     final hash = params.hashCode.toString();
     return '$_cachePrefix$queryType:$hash';
   }
-  
-  @override
+
   void clearCache() {
-    // Очистить только ключи словаря
     final allKeys = cacheManager.getAllKeys();
     for (final key in allKeys) {
       if (key.startsWith(_cachePrefix)) {
@@ -141,56 +141,40 @@ class DictionaryRepository extends BaseRepository {
     }
   }
   
-  @override
-  void validateData(Map<String, dynamic> data) {
-    super.validateData(data);
-    
+  
+  void _validateData(Map<String, dynamic> data) {
     if (data['source_word'] == null || (data['source_word'] as String).trim().isEmpty) {
       throw ValidationException('Source word is required and cannot be empty');
     }
-    
     if (data['target_word'] == null || (data['target_word'] as String).trim().isEmpty) {
       throw ValidationException('Target word is required and cannot be empty');
     }
-    
     if (data['language_pair'] == null || (data['language_pair'] as String).trim().isEmpty) {
       throw ValidationException('Language pair is required and cannot be empty');
     }
-    
-    // Валидация формата языковой пары
     final languagePair = data['language_pair'] as String;
     if (!RegExp(r'^[a-z]{2}-[a-z]{2}$').hasMatch(languagePair)) {
       throw ValidationException('Language pair must be in format "xx-xx" (e.g., "en-ru")');
     }
   }
-  
-  @override
-  Map<String, dynamic> transformForDatabase(Map<String, dynamic> data) {
+
+  Map<String, dynamic> _normalize(Map<String, dynamic> data) {
     final transformed = Map<String, dynamic>.from(data);
-    
-    // Нормализация текста
     if (transformed['source_word'] != null) {
       transformed['source_word'] = (transformed['source_word'] as String).trim().toLowerCase();
     }
-    
     if (transformed['target_word'] != null) {
       transformed['target_word'] = (transformed['target_word'] as String).trim();
     }
-    
     if (transformed['language_pair'] != null) {
       transformed['language_pair'] = (transformed['language_pair'] as String).toLowerCase();
     }
-    
-    // Добавить временные метки
     final now = DateTime.now().millisecondsSinceEpoch;
     transformed['updated_at'] = now;
-    if (transformed['created_at'] == null) {
-      transformed['created_at'] = now;
-    }
-    
+    transformed['created_at'] ??= now;
     return transformed;
   }
-  
+
   /// Получить перевод слова
   Future<DictionaryEntry?> getTranslation(
     String sourceWord,
@@ -208,25 +192,18 @@ class DictionaryRepository extends BaseRepository {
         'searchType': 'exact',
       });
       
-      final cached = getCached<DictionaryEntry>(cacheKey);
+      final cached = cacheManager.get<DictionaryEntry>(cacheKey);
       if (cached != null) {
         return cached;
       }
     }
     
-    // Поиск в базе данных
-    final results = await executeQuery((connection) async {
-      return await connection.query(
-        'SELECT * FROM $tableName WHERE source_word = ? AND language_pair = ? ORDER BY frequency DESC LIMIT 1',
-        [normalizedWord, normalizedLangPair],
-      );
-    });
-    
-    if (results.isEmpty) {
+    // Поиск в файловом индексе
+    final cache = _ensureLoaded(normalizedLangPair);
+    final entry = cache.bySource[normalizedWord];
+    if (entry == null) {
       return null;
     }
-    
-    final entry = DictionaryEntry.fromMap(results.first);
     
     // Сохранить в кэш
     if (useCache) {
@@ -235,7 +212,7 @@ class DictionaryRepository extends BaseRepository {
         'languagePair': normalizedLangPair,
         'searchType': 'exact',
       });
-      setCached(cacheKey, entry);
+      cacheManager.set(cacheKey, entry);
     }
     
     return entry;
@@ -258,72 +235,59 @@ class DictionaryRepository extends BaseRepository {
       'definition': definition,
       'frequency': frequency,
     };
-    
-    validateData(data);
-    final transformedData = transformForDatabase(data);
-    
-    return executeTransaction((connection) async {
-      // Проверить, существует ли уже такая запись
-      final existing = await connection.query(
-        'SELECT * FROM $tableName WHERE source_word = ? AND language_pair = ?',
-        [transformedData['source_word'], transformedData['language_pair']],
+
+    _validateData(data);
+    final transformedData = _normalize(data);
+
+    final lang = transformedData['language_pair'] as String;
+    final cache = _ensureLoaded(lang);
+
+    final existing = cache.bySource[transformedData['source_word'] as String];
+    DictionaryEntry result;
+
+    if (existing != null) {
+      // обновление
+      final updated = existing.copyWith(
+        targetWord: transformedData['target_word'] as String,
+        partOfSpeech: transformedData['part_of_speech'] as String?,
+        definition: transformedData['definition'] as String?,
+        frequency: existing.frequency + (transformedData['frequency'] as int? ?? 1),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(transformedData['updated_at'] as int),
       );
-      
-      DictionaryEntry result;
-      
-      if (existing.isNotEmpty) {
-        // Обновить существующую запись
-        final existingId = existing.first['id'] as int;
-        final existingFrequency = existing.first['frequency'] as int;
-        
-        // Увеличить частотность
-        transformedData['frequency'] = existingFrequency + frequency;
-        transformedData['id'] = existingId;
-        
-        await connection.execute(
-          'UPDATE $tableName SET target_word = ?, part_of_speech = ?, definition = ?, frequency = ?, updated_at = ? WHERE id = ?',
-          [
-            transformedData['target_word'],
-            transformedData['part_of_speech'],
-            transformedData['definition'],
-            transformedData['frequency'],
-            transformedData['updated_at'],
-            existingId,
-          ],
-        );
-        
-        transformedData['created_at'] = existing.first['created_at'];
-        result = DictionaryEntry.fromMap(transformedData);
-      } else {
-        // Вставить новую запись
-        final insertId = await connection.execute(
-          'INSERT INTO $tableName (source_word, target_word, language_pair, part_of_speech, definition, frequency, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [
-            transformedData['source_word'],
-            transformedData['target_word'],
-            transformedData['language_pair'],
-            transformedData['part_of_speech'],
-            transformedData['definition'],
-            transformedData['frequency'],
-            transformedData['created_at'],
-            transformedData['updated_at'],
-          ],
-        );
-        
-        transformedData['id'] = insertId;
-        result = DictionaryEntry.fromMap(transformedData);
-      }
-      
-      // Обновить кэш
-      final cacheKey = generateCacheKey({
-        'sourceWord': transformedData['source_word'],
-        'languagePair': transformedData['language_pair'],
-        'searchType': 'exact',
-      });
-      setCached(cacheKey, result);
-      
-      return result;
+      cache.bySource[updated.sourceWord] = updated;
+      result = updated;
+    } else {
+      // вставка
+      final id = ++cache.maxId;
+      final entry = DictionaryEntry(
+        id: id,
+        sourceWord: transformedData['source_word'] as String,
+        targetWord: transformedData['target_word'] as String,
+        languagePair: lang,
+        partOfSpeech: transformedData['part_of_speech'] as String?,
+        definition: transformedData['definition'] as String?,
+        frequency: transformedData['frequency'] as int? ?? 1,
+        createdAt: DateTime.fromMillisecondsSinceEpoch(transformedData['created_at'] as int),
+        updatedAt: DateTime.fromMillisecondsSinceEpoch(transformedData['updated_at'] as int),
+      );
+      cache.bySource[entry.sourceWord] = entry;
+      result = entry;
+    }
+
+    // перезаписать файл
+    await storage.ensureLangDir(lang);
+    final file = storage.dictFile(lang);
+    await storage.rewriteJsonLines(file, cache.bySource.values.map((e) => e.toMap()));
+
+    // Обновить кэш
+    final cacheKey = generateCacheKey({
+      'sourceWord': result.sourceWord,
+      'languagePair': result.languagePair,
+      'searchType': 'exact',
     });
+    cacheManager.set(cacheKey, result);
+
+    return result;
   }
   
   /// Поиск переводов по частичному совпадению
@@ -345,21 +309,25 @@ class DictionaryRepository extends BaseRepository {
         'limit': limit,
       });
       
-      final cached = getCached<List<DictionaryEntry>>(cacheKey);
+      final cached = cacheManager.get<List<DictionaryEntry>>(cacheKey);
       if (cached != null) {
         return cached;
       }
     }
     
-    // Поиск в базе данных
-    final results = await executeQuery((connection) async {
-      return await connection.query(
-        'SELECT * FROM $tableName WHERE (source_word LIKE ? OR target_word LIKE ?) AND language_pair = ? ORDER BY frequency DESC, source_word ASC LIMIT ?',
-        ['%$normalizedTerm%', '%$normalizedTerm%', normalizedLangPair, limit],
-      );
-    });
-    
-    final entries = results.map((row) => DictionaryEntry.fromMap(row)).toList();
+    // Поиск по индексу в памяти
+    final cache = _ensureLoaded(normalizedLangPair);
+    final entries = cache.bySource.values
+        .where((e) => e.sourceWord.contains(normalizedTerm) || e.targetWord.toLowerCase().contains(normalizedTerm))
+        .toList()
+      ..sort((a, b) {
+        final f = b.frequency.compareTo(a.frequency);
+        if (f != 0) return f;
+        return a.sourceWord.compareTo(b.sourceWord);
+      });
+    if (entries.length > limit) {
+      return entries.sublist(0, limit);
+    }
     
     // Сохранить в кэш
     if (useCache) {
@@ -369,7 +337,7 @@ class DictionaryRepository extends BaseRepository {
         'searchType': 'search',
         'limit': limit,
       });
-      setCached(cacheKey, entries);
+      cacheManager.set(cacheKey, entries);
     }
     
     return entries;
@@ -382,47 +350,64 @@ class DictionaryRepository extends BaseRepository {
     int? offset,
     String orderBy = 'frequency DESC',
   }) async {
-    final results = await getAll(
-      conditions: {'language_pair': languagePair.toLowerCase()},
-      orderBy: orderBy,
-      limit: limit,
-      offset: offset,
-    );
-    
-    return results.map((row) => DictionaryEntry.fromMap(row)).toList();
+    final cache = _ensureLoaded(languagePair.toLowerCase());
+    var list = cache.bySource.values.toList();
+    // orderBy: 'frequency DESC' by default
+    if (orderBy.toLowerCase().contains('frequency')) {
+      final desc = orderBy.toLowerCase().contains('desc');
+      list.sort((a, b) => desc ? b.frequency.compareTo(a.frequency) : a.frequency.compareTo(b.frequency));
+    }
+    if (offset != null && offset > 0 && offset < list.length) {
+      list = list.sublist(offset);
+    }
+    if (limit != null && limit < list.length) {
+      list = list.sublist(0, limit);
+    }
+    return list;
   }
   
   /// Удалить перевод
   Future<bool> deleteTranslation(int id) async {
-    final deleted = await delete({'id': id});
-    return deleted > 0;
+    // удалить по id в любой языковой паре (обычно вызывается зная пару)
+    for (final cache in _langCaches.values) {
+      DictionaryEntry? toRemove;
+      for (final e in cache.bySource.values) {
+        if (e.id == id) {
+          toRemove = e;
+          break;
+        }
+      }
+      if (toRemove != null) {
+        cache.bySource.remove(toRemove.sourceWord);
+        final file = storage.dictFile(cache.lang);
+        await storage.rewriteJsonLines(file, cache.bySource.values.map((e) => e.toMap()));
+        clearCache();
+        return true;
+      }
+    }
+    return false;
   }
-  
+
   /// Получить статистику по языковой паре
   Future<Map<String, dynamic>> getLanguagePairStats(String languagePair) async {
-    return executeQuery((connection) async {
-      final results = await connection.query(
-        'SELECT COUNT(*) as total_words, AVG(frequency) as avg_frequency, MAX(frequency) as max_frequency FROM $tableName WHERE language_pair = ?',
-        [languagePair.toLowerCase()],
-      );
-      
-      if (results.isEmpty) {
-        return {
-          'language_pair': languagePair,
-          'total_words': 0,
-          'avg_frequency': 0.0,
-          'max_frequency': 0,
-        };
-      }
-      
-      final row = results.first;
+    final cache = _ensureLoaded(languagePair.toLowerCase());
+    if (cache.bySource.isEmpty) {
       return {
         'language_pair': languagePair,
-        'total_words': row['total_words'] as int,
-        'avg_frequency': (row['avg_frequency'] as num?)?.toDouble() ?? 0.0,
-        'max_frequency': row['max_frequency'] as int? ?? 0,
+        'total_words': 0,
+        'avg_frequency': 0.0,
+        'max_frequency': 0,
       };
-    });
+    }
+    final total = cache.bySource.length;
+    final maxFreq = cache.bySource.values.map((e) => e.frequency).fold<int>(0, (p, c) => c > p ? c : p);
+    final avg = cache.bySource.values.map((e) => e.frequency).fold<int>(0, (a, b) => a + b) / total;
+    return {
+      'language_pair': languagePair,
+      'total_words': total,
+      'avg_frequency': avg,
+      'max_frequency': maxFreq,
+    };
   }
   
   /// Получить топ наиболее частых слов
@@ -430,12 +415,37 @@ class DictionaryRepository extends BaseRepository {
     String languagePair, {
     int limit = 100,
   }) async {
-    final results = await getAll(
-      conditions: {'language_pair': languagePair.toLowerCase()},
-      orderBy: 'frequency DESC',
-      limit: limit,
-    );
-    
-    return results.map((row) => DictionaryEntry.fromMap(row)).toList();
+    final cache = _ensureLoaded(languagePair.toLowerCase());
+    final list = cache.bySource.values.toList()
+      ..sort((a, b) => b.frequency.compareTo(a.frequency));
+    return list.length > limit ? list.sublist(0, limit) : list;
+  }
+}
+
+class _DictLangCache {
+  final String lang;
+  final FileStorageService storage;
+  final Map<String, DictionaryEntry> bySource = {};
+  int maxId = 0;
+
+  _DictLangCache(this.lang, this.storage) {
+    _load();
+  }
+
+  void _load() {
+    final file = storage.dictFile(lang);
+    if (!file.existsSync()) return;
+    final lines = file.readAsLinesSync();
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+      try {
+        final map = jsonDecode(line) as Map<String, dynamic>;
+        final entry = DictionaryEntry.fromMap(map);
+        bySource[entry.sourceWord] = entry;
+        if (entry.id != null && entry.id! > maxId) maxId = entry.id!;
+      } catch (_) {
+        // skip
+      }
+    }
   }
 }

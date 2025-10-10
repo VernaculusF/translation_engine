@@ -1,7 +1,6 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
-import 'package:translation_engine/src/data/database_manager.dart';
 import 'package:translation_engine/src/utils/cache_manager.dart';
 import 'package:translation_engine/src/data/dictionary_repository.dart';
 import 'package:translation_engine/src/data/phrase_repository.dart';
@@ -10,20 +9,14 @@ import 'package:translation_engine/src/core/translation_context.dart';
 
 Future<void> main() async {
   // Use a local folder under samples for persistent data during the demo
-  final sampleDir = Directory('samples/.sample_db');
+  final sampleDir = Directory('samples/.sample_data');
   if (!sampleDir.existsSync()) sampleDir.createSync(recursive: true);
-  final dbPath = sampleDir.path;
+  final dataDir = sampleDir.path;
 
-  // Populate repositories with a couple of entries
-  final dbManager = DatabaseManager(customDatabasePath: dbPath);
+  // Populate repositories with a couple of entries (file-based)
   final cacheManager = CacheManager();
-  final dictRepo = DictionaryRepository(databaseManager: dbManager, cacheManager: cacheManager);
-  final phraseRepo = PhraseRepository(databaseManager: dbManager, cacheManager: cacheManager);
-
-  // Ensure DBs are initialized
-  await dbManager.database;
-  await dbManager.initPhrasesDatabase();
-  await dbManager.initUserDataDatabase();
+  final dictRepo = DictionaryRepository(dataDirPath: dataDir, cacheManager: cacheManager);
+  final phraseRepo = PhraseRepository(dataDirPath: dataDir, cacheManager: cacheManager);
 
   // Add sample dictionary entries
   await dictRepo.addTranslation('good', 'хороший', 'en-ru', partOfSpeech: 'adjective', frequency: 100);
@@ -34,7 +27,7 @@ Future<void> main() async {
 
   // Now run engine against the same db path so it can read the data
   final engine = TranslationEngine.instance(reset: true);
-  await engine.initialize(customDatabasePath: dbPath);
+  await engine.initialize(customDatabasePath: dataDir);
 
   final result = await engine.translate(
     'Good morning, friend!',

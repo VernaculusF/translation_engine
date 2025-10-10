@@ -3,7 +3,6 @@
 import 'dart:io';
 import 'package:translation_engine/src/data/dictionary_repository.dart';
 import 'package:translation_engine/src/utils/cache_manager.dart';
-import 'package:translation_engine/src/data/database_manager_ffi.dart';
 import 'package:translation_engine/src/tools/dictionary_importer.dart';
 import 'base_command.dart';
 
@@ -18,13 +17,13 @@ class ImportCommand extends BaseCommand {
   void printUsage() {
     print('Import Command');
     print('');
-    print('Import dictionary data from local files into the database.');
+    print('Import dictionary data from local files into JSONL storage.');
     print('');
     print('Usage:');
     print('  dart run bin/translate_engine.dart import --db=<dir> --file=<path> --format=<csv|json|jsonl> --lang=<xx-yy> [--delimiter=,|;|\\t]');
     print('');
     print('Required Options:');
-    print('  --db           Directory to store or locate databases');
+    print('  --db           Directory to store or locate data (translation_data)');
     print('  --file         Input data file (CSV/JSON/JSONL)');
     print('  --format       Data format: csv | json | jsonl');
     print('  --lang         Language pair, e.g., en-ru');
@@ -73,16 +72,12 @@ class ImportCommand extends BaseCommand {
     }
     
     try {
-      print('Initializing database...');
-      
-      // Initialize repository on provided DB path using FFI manager
-      final dbManager = DatabaseManagerFfi(customDatabasePath: dbDir);
+      print('Initializing data storage...');
+
+      // Initialize file-based repository on provided data dir
       final cache = CacheManager();
-      final repo = DictionaryRepository(databaseManager: dbManager, cacheManager: cache);
-      
-      // Ensure database integrity
-      await dbManager.checkAllDatabasesIntegrity();
-      
+      final repo = DictionaryRepository(dataDirPath: dbDir, cacheManager: cache);
+
       print('Starting import...');
       print('  File: $filePath');
       print('  Format: $format');
