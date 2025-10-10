@@ -1,1 +1,0 @@
-This document has been superseded. Please see docs/usage_en.md and docs/usage_ru.md.
