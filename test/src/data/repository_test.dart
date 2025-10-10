@@ -1,9 +1,9 @@
 import 'package:test/test.dart';
-import 'package:translation_engine/src/utils/cache_manager.dart';
-import 'package:translation_engine/src/models/translation_result.dart';
-import 'package:translation_engine/src/data/dictionary_repository.dart';
-import 'package:translation_engine/src/data/phrase_repository.dart';
-import 'package:translation_engine/src/data/user_data_repository.dart';
+import 'package:fluent_translate/src/utils/cache_manager.dart';
+import 'package:fluent_translate/src/models/translation_result.dart';
+import 'package:fluent_translate/src/data/dictionary_repository.dart';
+import 'package:fluent_translate/src/data/phrase_repository.dart';
+import 'package:fluent_translate/src/data/user_data_repository.dart';
 import '../../helpers/test_database_helper.dart';
 
 void main() {

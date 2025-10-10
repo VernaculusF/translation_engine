@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:translation_engine/src/core/translation_engine.dart';
+import 'package:fluent_translate/src/core/translation_engine.dart';
 import 'helpers/test_database_helper.dart' as helpers;
 
 void main() {

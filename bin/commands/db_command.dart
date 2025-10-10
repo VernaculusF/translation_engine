@@ -3,11 +3,11 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:translation_engine/src/data/dictionary_repository.dart';
-import 'package:translation_engine/src/data/phrase_repository.dart';
-import 'package:translation_engine/src/utils/cache_manager.dart';
-import 'package:translation_engine/src/tools/dictionary_importer.dart';
-import 'package:translation_engine/src/tools/phrase_importer.dart';
+import 'package:fluent_translate/src/data/dictionary_repository.dart';
+import 'package:fluent_translate/src/data/phrase_repository.dart';
+import 'package:fluent_translate/src/utils/cache_manager.dart';
+import 'package:fluent_translate/src/tools/dictionary_importer.dart';
+import 'package:fluent_translate/src/tools/phrase_importer.dart';
 import 'base_command.dart';
 
 class DbCommand extends BaseCommand {

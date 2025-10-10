@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:translation_engine/src/models/translation_result.dart';
+import 'package:fluent_translate/src/models/translation_result.dart';
 
 void main() {
   group('Core + Data Layer Integration Tests (Placeholder)', () {

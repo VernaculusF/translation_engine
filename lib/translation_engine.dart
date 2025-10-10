@@ -4,7 +4,7 @@
 /// 
 /// Example usage:
 /// ```dart
-/// import 'package:translation_engine/translation_engine.dart';
+/// import 'package:fluent_translate/fluent_translate.dart';
 /// 
 /// final engine = TranslationEngine();
 /// await engine.initialize();
@@ -17,7 +17,7 @@
 /// 
 /// print('Translation: ${result.translatedText}');
 /// ```
-library translation_engine;
+library fluent_translate;
 
 // Core exports
 export 'src/core/translation_engine.dart';

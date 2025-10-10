@@ -3,8 +3,8 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
-import 'package:translation_engine/src/data/dictionary_repository.dart';
-import 'package:translation_engine/src/utils/cache_manager.dart';
+import 'package:fluent_translate/src/data/dictionary_repository.dart';
+import 'package:fluent_translate/src/utils/cache_manager.dart';
 
 void printUsage() {
   print('Data check (JSON/JSONL)');

@@ -1,6 +1,6 @@
-name: translation_engine
+name: fluent_translate
 description: "Offline translation engine for Flutter with layered processing, dictionary/phrase management, and JSON-file based storage."
-version: 2.0.0
+version: 0.0.1
 homepage: https://github.com/VernaculusF/translation_engine
 repository: https://github.com/VernaculusF/translation_engine
 

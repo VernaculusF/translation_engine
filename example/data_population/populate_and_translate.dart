@@ -1,11 +1,11 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
-import 'package:translation_engine/src/utils/cache_manager.dart';
-import 'package:translation_engine/src/data/dictionary_repository.dart';
-import 'package:translation_engine/src/data/phrase_repository.dart';
-import 'package:translation_engine/src/core/translation_engine.dart';
-import 'package:translation_engine/src/core/translation_context.dart';
+import 'package:fluent_translate/src/utils/cache_manager.dart';
+import 'package:fluent_translate/src/data/dictionary_repository.dart';
+import 'package:fluent_translate/src/data/phrase_repository.dart';
+import 'package:fluent_translate/src/core/translation_engine.dart';
+import 'package:fluent_translate/src/core/translation_context.dart';
 
 Future<void> main() async {
   // Use a local folder under samples for persistent data during the demo

@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:translation_engine/src/core/translation_engine.dart';
-import 'package:translation_engine/src/core/translation_context.dart';
+import 'package:fluent_translate/src/core/translation_engine.dart';
+import 'package:fluent_translate/src/core/translation_context.dart';
 
 void main() {
   group('Performance Benchmarks', () {

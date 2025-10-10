@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:translation_engine/src/core/translation_context.dart';
-import 'package:translation_engine/src/layers/word_order_layer.dart';
+import 'package:fluent_translate/src/core/translation_context.dart';
+import 'package:fluent_translate/src/layers/word_order_layer.dart';
 
 void main() {
   group('WordOrderLayer', () {

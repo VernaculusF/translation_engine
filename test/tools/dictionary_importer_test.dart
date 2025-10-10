@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:translation_engine/src/data/dictionary_repository.dart';
-import 'package:translation_engine/src/tools/dictionary_importer.dart';
-import 'package:translation_engine/src/utils/cache_manager.dart';
+import 'package:fluent_translate/src/data/dictionary_repository.dart';
+import 'package:fluent_translate/src/tools/dictionary_importer.dart';
+import 'package:fluent_translate/src/utils/cache_manager.dart';
 
 void main() {
   test('dictionary importer (jsonl)', () async {

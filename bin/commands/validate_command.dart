@@ -1,9 +1,9 @@
 // ignore_for_file: avoid_print
 import 'base_command.dart';
 
-import 'package:translation_engine/src/utils/cache_manager.dart';
-import 'package:translation_engine/src/data/dictionary_repository.dart';
-import 'package:translation_engine/src/data/phrase_repository.dart';
+import 'package:fluent_translate/src/utils/cache_manager.dart';
+import 'package:fluent_translate/src/data/dictionary_repository.dart';
+import 'package:fluent_translate/src/data/phrase_repository.dart';
 
 class ValidateCommand extends BaseCommand {
   @override

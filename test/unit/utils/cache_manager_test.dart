@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:translation_engine/src/utils/cache_manager.dart';
+import 'package:fluent_translate/src/utils/cache_manager.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

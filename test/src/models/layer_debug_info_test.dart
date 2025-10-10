@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:translation_engine/src/models/layer_debug_info.dart';
+import 'package:fluent_translate/src/models/layer_debug_info.dart';
 
 void main() {
   group('LayerDebugInfo', () {

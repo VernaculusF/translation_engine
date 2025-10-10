@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:translation_engine/src/core/translation_engine.dart';
+import 'package:fluent_translate/src/core/translation_engine.dart';
 
 void main() {
   group('TranslationEngine Tests', () {

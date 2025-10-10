@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:translation_engine/src/data/phrase_repository.dart';
-import 'package:translation_engine/src/utils/cache_manager.dart';
+import 'package:fluent_translate/src/data/phrase_repository.dart';
+import 'package:fluent_translate/src/utils/cache_manager.dart';
 
 void main() {
   group('PhraseRepository (file-based)', () {

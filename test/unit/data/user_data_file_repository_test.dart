@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:test/test.dart';
-import 'package:translation_engine/src/data/user_data_repository.dart';
-import 'package:translation_engine/src/models/translation_result.dart';
-import 'package:translation_engine/src/utils/cache_manager.dart';
+import 'package:fluent_translate/src/data/user_data_repository.dart';
+import 'package:fluent_translate/src/models/translation_result.dart';
+import 'package:fluent_translate/src/utils/cache_manager.dart';
 
 void main() {
   group('UserDataRepository (file-based)', () {

@@ -1,8 +1,8 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
-import 'package:translation_engine/src/core/translation_engine.dart';
-import 'package:translation_engine/src/core/translation_context.dart';
+import 'package:fluent_translate/src/core/translation_engine.dart';
+import 'package:fluent_translate/src/core/translation_context.dart';
 
 Future<void> main() async {
   // Prepare a temporary database path (for demo)
