@@ -1,15 +1,14 @@
 // ignore_for_file: avoid_print
 
 import 'dart:io';
-import 'package:fluent_translate/src/core/translation_engine.dart';
-import 'package:fluent_translate/src/core/translation_context.dart';
+import 'package:fluent_translate/fluent_translate.dart';
 
 Future<void> main() async {
   // Prepare a temporary database path (for demo)
   final tempDir = await Directory.systemTemp.createTemp('translation_engine_sample_');
   final dbPath = tempDir.path;
 
-  final engine = TranslationEngine.instance(reset: true);
+  final engine = TranslationEngine();
   await engine.initialize(customDatabasePath: dbPath);
 
   final result = await engine.translate(

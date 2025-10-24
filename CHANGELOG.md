@@ -1,46 +1,46 @@
 # Changelog
 
-## 0.0.1 - 2025-10-10
+All notable changes to this project will be documented in this file.
 
-- Initial test release of fluent_translate.
+## [Unreleased]
+- Docs: README updated with Variant A instructions (run CLI from external app via `dart run fluent_translate:translate_engine ...`).
+- Examples: added `example/main.dart` minimal usage with public API.
+- Cleanup: removed deprecated scripts and sample data; consolidated examples.
+- Docs: started Stage 1 (API stabilization) checklist in `docs/DEVELOPMENT_STAGES.md`.
 
 ## [0.0.4] - 2025-10-09
-
 ### Fixed
-- CLI скрипты переведены на FFI-менеджер БД и работу с внешним путём (--db), без Flutter-зависимостей
-- Завершён populate_dictionary.dart: наполнение ТОЛЬКО во внешнюю БД, никаких локальных БД внутри пакета
-- check_database.dart: проверка статистики, безопасное (опциональное) добавление тестовых данных флагом --populate
-- test_cli.dart: возможность указать --db и тестировать финальный перевод по конвейеру
+- CLI scripts migrated to file-based JSON/JSONL storage and external `--db` path; removed Flutter dependencies from CLI.
+- Completed `populate_dictionary.dart` to fill only external DB; no local DB inside the package.
+- `check_database.dart`: stats check and optional test data insertion via `--populate`.
+- `test_cli.dart`: allow `--db` and verify end-to-end pipeline.
 
 ### Internal
-- Анализатор: без предупреждений (flutter analyze)
-- Интеграционные и debug-тесты проходят (flutter test)
+- Analyzer clean (dart analyze).
+- Integration and debug tests green.
 
 ## [0.0.3] - 2025-10-09
-
 ### Changed
-- Pipeline: dynamic per-layer canProcess evaluation so downstream layers (Dictionary, Phrase) run after PreProcessing. This fixes the "no translation despite data" issue and enables actual word translations.
-- Debug scripts/tests updated to current APIs (DictionaryRepository.searchByWord, TranslationResult.layerResults) and to use a local FFI database path for Windows debugging.
-- Documentation: README dependency version bumped and usage remains the same.
+- Pipeline: dynamic per-layer canProcess evaluation so downstream layers (Dictionary, Phrase) run after PreProcessing. Fixes the "no translation despite data" issue and enables actual word translations.
+- Updated debug scripts/tests to current APIs and to use a local file-based DB path for Windows debugging.
+- Docs: README dependency version bumped; usage unchanged.
 
 ### Fixed
-- Ensured database schema matches tests and repositories (words/phrases use source_*/target_* and language_pair; timestamps present). Integration tests confirm integrity.
+- Ensured data layout matches repositories (words/phrases use source*/target* and language_pair; timestamps present). Integration tests confirm integrity.
 
 ### Tooling
-- Verified CLI db command flow for downloading and importing dictionaries/phrases into a specified folder (e.g., .\\translation_data) on Windows.
+- Verified `db` command flow for downloading/importing dictionaries/phrases into a specified folder (e.g., `./translation_data`) on Windows.
 
 ## [0.0.2] - 2025-01-09
-
 ### Changed
-- Cleaned documentation to English only
-- Simplified README with essential information
+- Documentation simplified and aligned; English-only content.
+- README reduced to essentials.
 
 ## [0.0.1] - 2025-01-09
-
 ### Added
-- Initial release of offline translation engine for Flutter
-- CLI for dictionary management
-- 6-layer translation pipeline with preprocessing, dictionary lookup, grammar rules, and post-processing
-- SQLite storage with LRU caching
-- Automatic dictionary downloads
-- Production-ready API with comprehensive error handling
+- Initial release of offline translation engine for Flutter.
+- CLI for dictionary/phrases management.
+- 6-layer translation pipeline with preprocessing, dictionary lookup, grammar rules, and post-processing.
+- File-based JSON/JSONL storage with caching.
+- Automatic dictionary downloads.
+- Public API with basic error handling.

@@ -40,3 +40,6 @@ build/
 **/*.db
 translation_data/
 **/translation_data/
+
+
+*.md
