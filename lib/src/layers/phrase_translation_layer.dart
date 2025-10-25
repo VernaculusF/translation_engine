@@ -4,6 +4,7 @@
 /// в базе данных фраз через PhraseRepository.
 library;
 
+import 'dart:math' as math;
 import '../core/translation_context.dart';
 import '../data/phrase_repository.dart';
 import '../models/layer_debug_info.dart';
@@ -179,32 +180,41 @@ class PhraseTranslationLayer extends BaseTranslationLayer {
         );
       }
       
-      // Поиск фраз в тексте (пока заглушка)
-      final phraseGroups = <PhraseTranslationGroup>[];
-      
-      if (phraseGroups.isEmpty) {
-        return LayerResult.noChange(
-          text: text,
+      // Пробуем точный поиск фразы по всему нормализованному тексту
+      final normalizedSource = wordTokens.map((t) => t.normalized).join(' ');
+      final exact = await _phraseRepository.getPhraseTranslation(
+        normalizedSource,
+        context.languagePair,
+      );
+      if (exact != null) {
+        final processed = exact.targetPhrase;
+        stopwatch.stop();
+        return LayerResult.success(
+          processedText: processed,
+          confidence: math.max(0.7, (exact.confidence / 100.0)),
           debugInfo: _createDebugInfo(
             inputText: text,
-            outputText: text,
+            outputText: processed,
             processingTimeMs: stopwatch.elapsedMilliseconds,
-            additionalInfo: {'reason': 'No phrases found'},
+            additionalInfo: {
+              'matched_phrase': normalizedSource,
+              'target_phrase': exact.targetPhrase,
+              'confidence_raw': exact.confidence,
+            },
           ),
-          reason: 'No translatable phrases found',
         );
       }
       
-      stopwatch.stop();
-      
-      return LayerResult.success(
-        processedText: text, // Пока без изменений
-        confidence: 0.5,
+      // Иначе без изменений (будущая реализация — поиск n-грамм)
+      return LayerResult.noChange(
+        text: text,
         debugInfo: _createDebugInfo(
           inputText: text,
           outputText: text,
           processingTimeMs: stopwatch.elapsedMilliseconds,
+          additionalInfo: {'reason': 'No phrases found (exact)'},
         ),
+        reason: 'No translatable phrases found',
       );
       
     } catch (e) {

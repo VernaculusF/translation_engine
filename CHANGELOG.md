@@ -3,10 +3,19 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
-- Docs: README updated with Variant A instructions (run CLI from external app via `dart run fluent_translate:translate_engine ...`).
-- Examples: added `example/main.dart` minimal usage with public API.
-- Cleanup: removed deprecated scripts and sample data; consolidated examples.
-- Docs: started Stage 1 (API stabilization) checklist in `docs/DEVELOPMENT_STAGES.md`.
+
+## [0.0.11] - 2025-10-25
+### Added
+- PhraseTranslationLayer: exact phrase lookup using phrases.jsonl (returns phrase translation when full phrase matches).
+- Tests: dictionary_single_letter_test (no partial matches for 1-letter tokens), phrase_exact_lookup_test (exact phrase translation).
+
+### Fixed
+- DictionaryLayer: prevent partial contains-search for 1-letter tokens to avoid false positives like 'i' -> 'family'.
+- DictionaryLayer: tokenizes current text locally to ensure sequential layer processing.
+
+### Docs
+- README: Variant A CLI instructions and public API quick start.
+- DEVELOPMENT_STAGES: started Stage 1 (API stabilization).
 
 ## [0.0.4] - 2025-10-09
 ### Fixed

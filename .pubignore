@@ -15,7 +15,7 @@ fix_layers.py
 DATA_REPOSITORY_SETUP.md
 FINAL_DATA_SETUP_INSTRUCTIONS.md
 
-# Тестовые данные
+# Тестовые данные (exclude from package to reduce size)
 test/
 
 # Старые CLI файлы (оставляем только новые)

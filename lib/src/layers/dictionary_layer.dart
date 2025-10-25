@@ -126,11 +126,8 @@ class DictionaryLayer extends BaseTranslationLayer {
     final stopwatch = Stopwatch()..start();
     
     try {
-      // Получаем токены от PreProcessingLayer
-      final tokens = context.getMetadata<List<TextToken>>('preprocessing_tokens');
-      if (tokens == null || tokens.isEmpty) {
-        throw ArgumentError('No tokens found in context metadata');
-      }
+      // Токенизируем текущий текст, чтобы работать последовательно по конвейеру
+      final tokens = _tokenizeText(text);
       
       // Извлекаем только словарные токены
       final wordTokens = tokens.where((token) => token.type == TokenType.word).toList();
@@ -254,6 +251,51 @@ class DictionaryLayer extends BaseTranslationLayer {
     }
   }
   
+  /// Простейшая токенизация текущего текста (слова и прочие сегменты)
+  List<TextToken> _tokenizeText(String text) {
+    final tokens = <TextToken>[];
+    int i = 0;
+    while (i < text.length) {
+      final ch = text.codeUnitAt(i);
+      // [A-Za-z] слово
+      if ((ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122)) {
+        final start = i;
+        while (i < text.length) {
+          final c = text.codeUnitAt(i);
+          if (!((c >= 65 && c <= 90) || (c >= 97 && c <= 122))) break;
+          i++;
+        }
+        final original = text.substring(start, i);
+        tokens.add(TextToken(
+          original: original,
+          normalized: original.toLowerCase(),
+          startPosition: start,
+          endPosition: i,
+          type: TokenType.word,
+        ));
+      } else {
+        // прочий символ: сгруппируем подрядной последовательностью
+        final start = i;
+        while (i < text.length) {
+          final c = text.codeUnitAt(i);
+          final isLetter = (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+          if (isLetter) break;
+          i++;
+        }
+        final seg = text.substring(start, i);
+        final isWhitespace = RegExp(r"^\s+").hasMatch(seg);
+        tokens.add(TextToken(
+          original: seg,
+          normalized: seg,
+          startPosition: start,
+          endPosition: i,
+          type: isWhitespace ? TokenType.whitespace : TokenType.punctuation,
+        ));
+      }
+    }
+    return tokens;
+  }
+  
   /// Перевод отдельного слова
   Future<WordTranslationGroup?> _translateWord(
     String word,
@@ -281,22 +323,26 @@ class DictionaryLayer extends BaseTranslationLayer {
           'language_pair': exactEntry.languagePair,
         });
       } else {
-        // Если точного не нашли, поищем по частичному совпадению
-        final searchResults = await _dictionaryRepository.searchByWord(
-          word,
-          '$sourceLanguage-$targetLanguage',
-          limit: _maxTranslationsPerWord,
-        );
-        
-        dictionaryEntries = searchResults.map((entry) => {
-          'id': entry.id,
-          'source_word': entry.sourceWord,
-          'target_word': entry.targetWord,
-          'part_of_speech': entry.partOfSpeech,
-          'definition': entry.definition,
-          'frequency': entry.frequency,
-          'language_pair': entry.languagePair,
-        }).toList();
+        // Если точного не нашли, поищем по частичному совпадению ТОЛЬКО для слов длиной >= 2
+        if (word.length >= 2) {
+          final searchResults = await _dictionaryRepository.searchByWord(
+            word,
+            '$sourceLanguage-$targetLanguage',
+            limit: _maxTranslationsPerWord,
+          );
+          
+          dictionaryEntries = searchResults.map((entry) => {
+            'id': entry.id,
+            'source_word': entry.sourceWord,
+            'target_word': entry.targetWord,
+            'part_of_speech': entry.partOfSpeech,
+            'definition': entry.definition,
+            'frequency': entry.frequency,
+            'language_pair': entry.languagePair,
+          }).toList();
+        } else {
+          dictionaryEntries = [];
+        }
       }
       
       if (dictionaryEntries.isEmpty) return null;
