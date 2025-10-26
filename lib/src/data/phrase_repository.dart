@@ -233,12 +233,19 @@ class PhraseRepository {
     String languagePair, {
     bool useCache = true,
   }) async {
-    final normalizedPhrase = sourcePhrase.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    // Canonical key
+    String canonical = sourcePhrase.trim().toLowerCase();
+    canonical = canonical.replaceAll(RegExp(r'\s+'), ' ');
+    // Remove wrapping quotes for canonical (not inner)
+    if ((canonical.length >= 2 && canonical.startsWith('"') && canonical.endsWith('"')) ||
+        (canonical.length >= 2 && canonical.startsWith("'") && canonical.endsWith("'"))) {
+      canonical = canonical.substring(1, canonical.length - 1);
+    }
     final normalizedLangPair = languagePair.toLowerCase();
 
     if (useCache) {
       final cacheKey = generateCacheKey({
-        'sourcePhrase': normalizedPhrase,
+        'sourcePhrase': canonical,
         'languagePair': normalizedLangPair,
         'searchType': 'exact',
       });
@@ -247,12 +254,17 @@ class PhraseRepository {
     }
 
     final cache = _ensureLoaded(normalizedLangPair);
-    final entry = cache.bySource[normalizedPhrase];
-    if (entry == null) return null;
+    PhraseEntry? entry = cache.bySource[canonical];
+    if (entry == null) {
+      // Try loose variant without apostrophes
+      final loose = canonical.replaceAll("'", '');
+      entry = cache.bySourceLoose[loose];
+      if (entry == null) return null;
+    }
 
     if (useCache) {
       final cacheKey = generateCacheKey({
-        'sourcePhrase': normalizedPhrase,
+        'sourcePhrase': canonical,
         'languagePair': normalizedLangPair,
         'searchType': 'exact',
       });
@@ -540,10 +552,21 @@ class _PhraseLangCache {
   final String lang;
   final FileStorageService storage;
   final Map<String, PhraseEntry> bySource = {};
+  final Map<String, PhraseEntry> bySourceLoose = {};
   int maxId = 0;
 
   _PhraseLangCache(this.lang, this.storage) {
     _load();
+  }
+
+  String _normalizeKey(String s) {
+    var t = s.trim().toLowerCase();
+    if ((t.length >= 2 && t.startsWith('"') && t.endsWith('"')) ||
+        (t.length >= 2 && t.startsWith("'") && t.endsWith("'"))) {
+      t = t.substring(1, t.length - 1);
+    }
+    t = t.replaceAll(RegExp(r'\s+'), ' ');
+    return t;
   }
 
   void _load() {
@@ -555,11 +578,18 @@ class _PhraseLangCache {
       try {
         final map = jsonDecode(line) as Map<String, dynamic>;
         final entry = PhraseEntry.fromMap(map);
-        bySource[entry.sourcePhrase] = entry;
+        final key = _normalizeKey(entry.sourcePhrase);
+        final loose = _looseKey(key);
+        bySource[key] = entry;
+        bySourceLoose[loose] = entry;
         if (entry.id != null && entry.id! > maxId) maxId = entry.id!;
       } catch (_) {
         // skip
       }
     }
+  }
+
+  String _looseKey(String key) {
+    return key.replaceAll("'", '');
   }
 }

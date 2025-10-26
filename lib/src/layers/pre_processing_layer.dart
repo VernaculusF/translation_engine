@@ -432,10 +432,8 @@ class PreProcessingLayer extends BaseTranslationLayer {
           String normalized = token.normalized;
           normalized = normalized.replaceAll(RegExp(r"^'|'$"), '');
           
-          if (normalized.endsWith("'s")) {
-            normalized = normalized.substring(0, normalized.length - 2);
-          }
-          
+          // Keep intra-word apostrophes (contractions like what's, it's).
+          // Possessive handling should be done at grammar/post-processing stage.
           return TextToken(
             original: token.original,
             normalized: normalized,

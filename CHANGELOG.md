@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.0.12] - 2025-10-26
+### Added
+- Enhanced translation pipeline functionality
+- Improved error handling and stability
+- Better performance optimizations
+
+### Fixed
+- Translation accuracy improvements
+- Bug fixes in dictionary and phrase processing
+
 ## [0.0.11] - 2025-10-25
 ### Added
 - PhraseTranslationLayer: exact phrase lookup using phrases.jsonl (returns phrase translation when full phrase matches).
