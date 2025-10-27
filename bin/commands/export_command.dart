@@ -109,7 +109,7 @@ class ExportCommand extends BaseCommand {
   String _csvEscape(Object? v) {
     final s = (v ?? '').toString();
     if (s.contains(',') || s.contains('"') || s.contains('\n')) {
-      return '"' + s.replaceAll('"', '""') + '"';
+return '"${s.replaceAll('"', '""')}"';
     }
     return s;
   }

@@ -7,6 +7,9 @@ import '../layers/dictionary_layer.dart';
 import '../layers/grammar_layer.dart';
 import '../layers/word_order_layer.dart';
 import '../layers/post_processing_layer.dart';
+import '../data/grammar_rules_repository.dart';
+import '../data/word_order_rules_repository.dart';
+import '../data/post_processing_rules_repository.dart';
 import '../data/dictionary_repository.dart';
 import '../data/phrase_repository.dart';
 import '../models/layer_debug_info.dart';
@@ -64,15 +67,15 @@ class LayerAdaptersFactory {
     return LayerAdapter(DictionaryLayer(dictionaryRepository: repo), LayerType.dictionary);
   }
 
-  static LayerAdapter grammar() {
-    return LayerAdapter(GrammarLayer(), LayerType.grammar);
+  static LayerAdapter grammar({GrammarRulesRepository? repo}) {
+    return LayerAdapter(GrammarLayer(grammarRulesRepository: repo), LayerType.grammar);
   }
 
-  static LayerAdapter wordOrder() {
-    return LayerAdapter(WordOrderLayer(), LayerType.wordOrder);
+  static LayerAdapter wordOrder({WordOrderRulesRepository? repo}) {
+    return LayerAdapter(WordOrderLayer(wordOrderRepository: repo), LayerType.wordOrder);
   }
 
-  static LayerAdapter postProcessing() {
-    return LayerAdapter(PostProcessingLayer(), LayerType.postProcessing);
+  static LayerAdapter postProcessing({PostProcessingRulesRepository? repo}) {
+    return LayerAdapter(PostProcessingLayer(postProcessingRepository: repo), LayerType.postProcessing);
   }
 }

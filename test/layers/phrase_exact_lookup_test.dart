@@ -49,7 +49,7 @@ void main() {
   });
 }
 
-String _j(Map<String, Object?> m) => '{' + m.entries.map((e) => '"${e.key}":${_v(e.value)}').join(',') + '}';
+String _j(Map<String, Object?> m) => '{${m.entries.map((e) => '"${e.key}":${_v(e.value)}').join(',')}}';
 String _v(Object? v) {
   if (v == null) return 'null';
   if (v is num || v is bool) return v.toString();

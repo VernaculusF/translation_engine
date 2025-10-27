@@ -2,6 +2,7 @@ import '../core/translation_context.dart';
 import '../models/layer_debug_info.dart';
 import '../utils/debug_logger.dart';
 import 'base_translation_layer.dart';
+import '../data/grammar_rules_repository.dart';
 
 /// Grammar rules for specific language pairs
 class GrammarRule {
@@ -26,8 +27,9 @@ class GrammarRule {
   });
 
   bool appliesTo(String sourceLanguage, String targetLanguage) {
-    return this.sourceLanguage == sourceLanguage && 
-           this.targetLanguage == targetLanguage;
+    final srcOk = this.sourceLanguage == 'any' || this.sourceLanguage == sourceLanguage;
+    final tgtOk = this.targetLanguage == 'any' || this.targetLanguage == targetLanguage;
+    return srcOk && tgtOk;
   }
 
   bool matchesConditions(TranslationContext context) {
@@ -94,13 +96,17 @@ class GrammarLayer extends BaseTranslationLayer {
   final Map<String, List<VerbConjugation>> _verbConjugations;
   final DebugLogger _logger;
 
+  final GrammarRulesRepository? _rulesRepository;
+
   GrammarLayer({
     List<GrammarRule>? grammarRules,
     Map<String, List<VerbConjugation>>? verbConjugations,
     DebugLogger? logger,
+    GrammarRulesRepository? grammarRulesRepository,
   }) : _grammarRules = grammarRules ?? _getDefaultGrammarRules(),
        _verbConjugations = verbConjugations ?? {},
-       _logger = logger ?? DebugLogger.instance;
+       _logger = logger ?? DebugLogger.instance,
+       _rulesRepository = grammarRulesRepository;
 
   @override
   String get name => layerName;
@@ -110,6 +116,26 @@ class GrammarLayer extends BaseTranslationLayer {
 
   @override
   LayerPriority get priority => LayerPriority.grammar;
+
+  /// Resolve rules: external repository overrides defaults if available
+  Future<List<GrammarRule>> _resolveRules(TranslationContext context) async {
+    if (_rulesRepository != null) {
+      final dtos = await _rulesRepository.getRules(context.languagePair);
+      if (dtos.isNotEmpty) {
+        return dtos.map((d) => GrammarRule(
+          ruleId: d.ruleId,
+          sourceLanguage: d.sourceLanguage,
+          targetLanguage: d.targetLanguage,
+          description: d.description,
+          pattern: RegExp(d.pattern, caseSensitive: d.caseSensitive),
+          replacement: d.replacement,
+          priority: d.priority,
+          conditions: d.conditions,
+        )).toList();
+      }
+    }
+    return _grammarRules;
+  }
 
   @override
   bool canHandle(String text, TranslationContext context) {
@@ -136,7 +162,8 @@ class GrammarLayer extends BaseTranslationLayer {
       final appliedRules = <String>[];
 
       // Apply grammar rules in priority order
-      final applicableRules = _getApplicableRules(context);
+      final allRules = await _resolveRules(context);
+      final applicableRules = _getApplicableRules(context, allRules);
       applicableRules.sort((a, b) => b.priority.compareTo(a.priority));
 
       for (final rule in applicableRules) {
@@ -205,11 +232,11 @@ class GrammarLayer extends BaseTranslationLayer {
   }
 
   /// Gets grammar rules applicable to the current translation context
-  List<GrammarRule> _getApplicableRules(TranslationContext context) {
+  List<GrammarRule> _getApplicableRules(TranslationContext context, List<GrammarRule> rules) {
     final sourceLanguage = context.sourceLanguage;
     final targetLanguage = context.targetLanguage;
     
-    return _grammarRules.where((rule) {
+    return rules.where((rule) {
       return rule.appliesTo(sourceLanguage, targetLanguage) && 
              rule.matchesConditions(context);
     }).toList();

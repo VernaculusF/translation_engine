@@ -192,6 +192,13 @@ class PreProcessingLayer extends BaseTranslationLayer {
       // Сохранение токенов в контекст для следующих слоев
       context.setMetadata('preprocessing_tokens', normalizedTokens);
       context.setMetadata('token_count', normalizedTokens.length);
+      // Заполняем краткие токены для нижних слоёв
+      context.tokens = normalizedTokens
+          .where((t) => t.type == TokenType.word)
+          .map((t) => t.normalized)
+          .toList();
+      // Инициализируем исходный текст, если ещё не был установлен
+      context.originalText ??= originalText;
       if (detectedLanguage.isNotEmpty) {
         context.setMetadata('detected_language', detectedLanguage);
       }

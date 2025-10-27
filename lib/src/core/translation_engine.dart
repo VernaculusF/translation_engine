@@ -14,6 +14,9 @@ import '../utils/cache_manager.dart';
 import '../models/translation_result.dart';
 import 'translation_pipeline.dart';
 import 'translation_context.dart';
+import '../data/grammar_rules_repository.dart';
+import '../data/word_order_rules_repository.dart';
+import '../data/post_processing_rules_repository.dart';
 
 /// Состояния жизненного цикла TranslationEngine
 enum EngineState {
@@ -65,6 +68,9 @@ class TranslationEngine {
   late DictionaryRepository _dictionaryRepository;
   late PhraseRepository _phraseRepository;
   late UserDataRepository _userDataRepository;
+  late GrammarRulesRepository _grammarRulesRepository;
+  late WordOrderRulesRepository _wordOrderRulesRepository;
+  late PostProcessingRulesRepository _postProcessingRulesRepository;
   late TranslationPipeline _pipeline;
 
   // Путь к данным JSONL
@@ -150,7 +156,7 @@ class TranslationEngine {
       _setState(EngineState.initializing);
       
       // Инициализация Data Layer компонентов (файловое хранилище)
-      _dataPath = customDatabasePath ?? Directory.current.uri.toFilePath() + 'translation_data';
+_dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translation_data';
       _cacheManager = CacheManager();
 
       // Инициализация репозиториев (файловые JSONL)
@@ -166,6 +172,20 @@ class TranslationEngine {
         dataDirPath: _dataPath,
         cacheManager: _cacheManager,
       );
+
+      // Инициализация репозиториев правил
+      _grammarRulesRepository = GrammarRulesRepository(
+        dataDirPath: _dataPath,
+        cacheManager: _cacheManager,
+      );
+      _wordOrderRulesRepository = WordOrderRulesRepository(
+        dataDirPath: _dataPath,
+        cacheManager: _cacheManager,
+      );
+      _postProcessingRulesRepository = PostProcessingRulesRepository(
+        dataDirPath: _dataPath,
+        cacheManager: _cacheManager,
+      );
       
       // Инициализация pipeline
       _pipeline = TranslationPipeline(
@@ -173,6 +193,9 @@ class TranslationEngine {
         phraseRepository: _phraseRepository,
         userDataRepository: _userDataRepository,
         cacheManager: _cacheManager,
+        grammarRulesRepository: _grammarRulesRepository,
+        wordOrderRulesRepository: _wordOrderRulesRepository,
+        postProcessingRulesRepository: _postProcessingRulesRepository,
         registerDefaultLayers: true,
       );
       

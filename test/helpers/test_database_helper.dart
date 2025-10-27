@@ -18,7 +18,7 @@ class TestDataHelper {
   /// Создать тестовую сессию с отдельной translation_data директорией
   static Future<TestDataSession> createSession() async {
     final base = await Directory.systemTemp.createTemp('translation_engine_jsonl_test_');
-    final data = Directory(base.path + Platform.pathSeparator + 'translation_data');
+final data = Directory('${base.path}${Platform.pathSeparator}translation_data');
     if (!data.existsSync()) {
       data.createSync(recursive: true);
     }

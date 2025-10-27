@@ -2,6 +2,7 @@ import '../core/translation_context.dart';
 import '../models/layer_debug_info.dart';
 import '../utils/debug_logger.dart';
 import 'base_translation_layer.dart';
+import '../data/post_processing_rules_repository.dart';
 
 /// Represents a post-processing rule
 class PostProcessingRule {
@@ -97,15 +98,19 @@ class PostProcessingLayer extends BaseTranslationLayer {
   final DebugLogger _logger;
   final bool _enableQualityCheck;
 
+  final PostProcessingRulesRepository? _rulesRepository;
+
   PostProcessingLayer({
     List<PostProcessingRule>? postProcessingRules,
     Map<String, LanguageFormattingRules>? languageRules,
     DebugLogger? logger,
     bool enableQualityCheck = true,
+    PostProcessingRulesRepository? postProcessingRepository,
   }) : _postProcessingRules = postProcessingRules ?? _getDefaultPostProcessingRules(),
        _languageRules = languageRules ?? _getDefaultLanguageFormattingRules(),
        _logger = logger ?? DebugLogger.instance,
-       _enableQualityCheck = enableQualityCheck;
+       _enableQualityCheck = enableQualityCheck,
+       _rulesRepository = postProcessingRepository;
 
   @override
   String get name => layerName;
@@ -179,7 +184,7 @@ class PostProcessingLayer extends BaseTranslationLayer {
       }
       
       // Step 5: Apply post-processing rules
-      final applicableRules = _getApplicableRules(targetLanguage);
+      final applicableRules = await _getApplicableRules(targetLanguage);
       applicableRules.sort((a, b) => b.priority.compareTo(a.priority));
       
       for (final rule in applicableRules) {
@@ -354,6 +359,26 @@ class PostProcessingLayer extends BaseTranslationLayer {
   }
 
   /// Applies language-specific formatting rules
+  Future<List<PostProcessingRule>> _getApplicableRules(String targetLanguage) async {
+    // Prefer external rules if provided
+    if (_rulesRepository != null) {
+      final dtos = await _rulesRepository.getRules(targetLanguage);
+      if (dtos.isNotEmpty) {
+        final rules = dtos.map((d) => PostProcessingRule(
+          ruleId: d.ruleId,
+          description: d.description,
+          pattern: RegExp(d.pattern, caseSensitive: d.caseSensitive),
+          replacement: d.replacement,
+          priority: d.priority,
+          targetLanguages: d.targetLanguages,
+          isGlobal: d.isGlobal,
+        )).toList();
+        return rules.where((r) => r.appliesTo(targetLanguage)).toList();
+      }
+    }
+    return _postProcessingRules.where((r) => r.appliesTo(targetLanguage)).toList();
+  }
+
   String _applyLanguageFormatting(String text, String targetLanguage) {
     final languageRules = _languageRules[targetLanguage];
     if (languageRules == null) return text;
@@ -500,11 +525,6 @@ class PostProcessingLayer extends BaseTranslationLayer {
     };
     
     return commonWords[language]?.contains(word.toLowerCase()) ?? false;
-  }
-
-  /// Gets post-processing rules applicable to the target language
-  List<PostProcessingRule> _getApplicableRules(String targetLanguage) {
-    return _postProcessingRules.where((rule) => rule.appliesTo(targetLanguage)).toList();
   }
 
   /// Applies a specific post-processing rule

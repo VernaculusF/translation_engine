@@ -14,6 +14,9 @@ import '../models/translation_result.dart';
 import '../models/layer_debug_info.dart';
 import 'translation_context.dart';
 import 'layer_adapters.dart';
+import '../data/grammar_rules_repository.dart';
+import '../data/word_order_rules_repository.dart';
+import '../data/post_processing_rules_repository.dart';
 
 /// Состояния pipeline обработки
 enum PipelineState {
@@ -80,6 +83,11 @@ class TranslationPipeline {
   final UserDataRepository userDataRepository;
   final CacheManager cacheManager;
   
+  // Optional repositories for rule-based layers
+  final GrammarRulesRepository? grammarRulesRepository;
+  final WordOrderRulesRepository? wordOrderRulesRepository;
+  final PostProcessingRulesRepository? postProcessingRulesRepository;
+  
   // Pipeline state
   PipelineState _state = PipelineState.idle;
   final StreamController<PipelineState> _stateController = StreamController<PipelineState>.broadcast();
@@ -101,6 +109,9 @@ class TranslationPipeline {
     required this.phraseRepository,
     required this.userDataRepository,
     required this.cacheManager,
+    this.grammarRulesRepository,
+    this.wordOrderRulesRepository,
+    this.postProcessingRulesRepository,
     bool registerDefaultLayers = false,
   }) {
     if (registerDefaultLayers) {
@@ -196,6 +207,8 @@ class TranslationPipeline {
         try {
           final result = await layer.process(currentText, context);
           currentText = result.processedText;
+          // Обновляем контекст, чтобы последующие слои видели актуальный текст
+          context.translatedText = currentText;
           
           layerStopwatch.stop();
           layerResults.add(result.debugInfo);
@@ -300,9 +313,9 @@ class TranslationPipeline {
       registerLayer(LayerAdaptersFactory.dictionary(repo: dictionaryRepository));
 
       // Grammar, Word order, Post-processing
-      registerLayer(LayerAdaptersFactory.grammar());
-      registerLayer(LayerAdaptersFactory.wordOrder());
-      registerLayer(LayerAdaptersFactory.postProcessing());
+      registerLayer(LayerAdaptersFactory.grammar(repo: grammarRulesRepository));
+      registerLayer(LayerAdaptersFactory.wordOrder(repo: wordOrderRulesRepository));
+      registerLayer(LayerAdaptersFactory.postProcessing(repo: postProcessingRulesRepository));
     } catch (_) {
       // In case of any initialization issues, leave pipeline without default layers
     }

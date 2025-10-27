@@ -2,6 +2,7 @@ import '../core/translation_context.dart';
 import '../models/layer_debug_info.dart';
 import '../utils/debug_logger.dart';
 import 'base_translation_layer.dart';
+import '../data/word_order_rules_repository.dart';
 
 /// Represents the syntactic order pattern for a language
 enum WordOrderType {
@@ -40,8 +41,9 @@ class WordOrderRule {
   });
 
   bool appliesTo(String sourceLanguage, String targetLanguage) {
-    return this.sourceLanguage == sourceLanguage && 
-           this.targetLanguage == targetLanguage;
+    final srcOk = this.sourceLanguage == 'any' || this.sourceLanguage == sourceLanguage;
+    final tgtOk = this.targetLanguage == 'any' || this.targetLanguage == targetLanguage;
+    return srcOk && tgtOk;
   }
 
   bool matchesConditions(TranslationContext context) {
@@ -145,13 +147,17 @@ class WordOrderLayer extends BaseTranslationLayer {
   final Map<String, WordOrderType> _languageOrders;
   final DebugLogger _logger;
 
+  final WordOrderRulesRepository? _rulesRepository;
+
   WordOrderLayer({
     List<WordOrderRule>? orderRules,
     Map<String, WordOrderType>? languageOrders,
     DebugLogger? logger,
+    WordOrderRulesRepository? wordOrderRepository,
   }) : _orderRules = orderRules ?? _getDefaultOrderRules(),
        _languageOrders = languageOrders ?? _getDefaultLanguageOrders(),
-       _logger = logger ?? DebugLogger.instance;
+       _logger = logger ?? DebugLogger.instance,
+       _rulesRepository = wordOrderRepository;
 
   @override
   String get name => layerName;
@@ -248,7 +254,8 @@ class WordOrderLayer extends BaseTranslationLayer {
       reorderedText = reorderedSentences.join('');
       
       // Apply specific word order rules
-      final applicableRules = _getApplicableRules(context, sourceLanguage, targetLanguage);
+      final allRules = await _resolveRules(context);
+      final applicableRules = _getApplicableRulesFrom(allRules, context, sourceLanguage, targetLanguage);
       applicableRules.sort((a, b) => b.priority.compareTo(a.priority));
       
       for (final rule in applicableRules) {
@@ -313,6 +320,45 @@ class WordOrderLayer extends BaseTranslationLayer {
   }
 
   /// Splits text into sentences for individual processing
+  Future<List<WordOrderRule>> _resolveRules(TranslationContext context) async {
+    if (_rulesRepository != null) {
+      final dtos = await _rulesRepository.getRules(context.languagePair);
+      if (dtos.isNotEmpty) {
+        return dtos.map((d) => WordOrderRule(
+          ruleId: d.ruleId,
+          sourceLanguage: d.sourceLanguage,
+          targetLanguage: d.targetLanguage,
+          description: d.description,
+          sourceOrder: _parseOrder(d.sourceOrder),
+          targetOrder: _parseOrder(d.targetOrder),
+          pattern: RegExp(d.pattern, caseSensitive: d.caseSensitive),
+          reorderTemplate: d.reorderTemplate,
+          priority: d.priority,
+          conditions: d.conditions,
+        )).toList();
+      }
+    }
+    return _orderRules;
+  }
+
+  WordOrderType _parseOrder(String name) {
+    switch (name.toLowerCase()) {
+      case 'svo': return WordOrderType.svo;
+      case 'sov': return WordOrderType.sov;
+      case 'vso': return WordOrderType.vso;
+      case 'vos': return WordOrderType.vos;
+      case 'ovs': return WordOrderType.ovs;
+      case 'osv': return WordOrderType.osv;
+      default: return WordOrderType.svo;
+    }
+  }
+
+  List<WordOrderRule> _getApplicableRulesFrom(List<WordOrderRule> rules, TranslationContext context, String sourceLanguage, String targetLanguage) {
+    return rules.where((rule) {
+      return rule.appliesTo(sourceLanguage, targetLanguage) && rule.matchesConditions(context);
+    }).toList();
+  }
+
   List<String> _splitIntoSentences(String text) {
     // Simple sentence splitting - can be improved with more sophisticated logic
     final sentences = <String>[];
@@ -537,18 +583,6 @@ class WordOrderLayer extends BaseTranslationLayer {
     reordered.addAll(remainingOthers);
     
     return reordered;
-  }
-
-  /// Gets word order rules applicable to the current context
-  List<WordOrderRule> _getApplicableRules(
-    TranslationContext context,
-    String sourceLanguage,
-    String targetLanguage
-  ) {
-    return _orderRules.where((rule) {
-      return rule.appliesTo(sourceLanguage, targetLanguage) && 
-             rule.matchesConditions(context);
-    }).toList();
   }
 
   /// Applies a specific word order rule to the text

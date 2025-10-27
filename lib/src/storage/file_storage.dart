@@ -13,6 +13,9 @@ class FileStorageService {
 
   File dictFile(String languagePair) => File(_p(rootDir, languagePair, 'dictionary.jsonl'));
   File phrasesFile(String languagePair) => File(_p(rootDir, languagePair, 'phrases.jsonl'));
+  File grammarRulesFile(String languagePair) => File(_p(rootDir, languagePair, 'grammar_rules.jsonl'));
+  File wordOrderRulesFile(String languagePair) => File(_p(rootDir, languagePair, 'word_order_rules.jsonl'));
+  File postProcessingRulesFile(String languagePair) => File(_p(rootDir, languagePair, 'post_processing_rules.jsonl'));
 
   File userHistoryFile() => File(_p(rootDir, 'user', 'translation_history.jsonl'));
   File userSettingsFile() => File(_p(rootDir, 'user', 'user_settings.json'));

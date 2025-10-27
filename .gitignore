@@ -37,3 +37,6 @@ migrate_working_dir/
 **/*.db
 translation_data/
 **/translation_data/
+
+# Ignore local rule templates
+rules_templates/
