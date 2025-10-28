@@ -233,11 +233,9 @@ class TranslationPipeline {
       stopwatch.stop();
       _updateStatistics(stopwatch.elapsed, _layerProcessingTimes);
       
-      _setState(PipelineState.completed);
-      
       // Если ни один слой не обработал текст, вернуть исходный
       if (!anyLayerProcessed) {
-        return TranslationResult.success(
+        final res = TranslationResult.success(
           originalText: text,
           translatedText: text,
           languagePair: context.languagePair,
@@ -245,12 +243,15 @@ class TranslationPipeline {
           processingTimeMs: stopwatch.elapsedMilliseconds,
           layerResults: layerResults,
         );
+        _setState(PipelineState.completed);
+        _setState(PipelineState.idle);
+        return res;
       }
       
       // Вычисляем confidence на основе результатов слоев
       final confidence = _calculateConfidence(layerResults);
       
-      return TranslationResult.success(
+      final res = TranslationResult.success(
         originalText: text,
         translatedText: currentText,
         languagePair: context.languagePair,
@@ -258,19 +259,25 @@ class TranslationPipeline {
         processingTimeMs: stopwatch.elapsedMilliseconds,
         layerResults: layerResults,
       );
+      _setState(PipelineState.completed);
+      _setState(PipelineState.idle);
+      return res;
       
     } catch (e) {
       stopwatch.stop();
       _lastError = e is Exception ? e : Exception('Pipeline processing failed: $e');
       _setState(PipelineState.error);
       
-      return TranslationResult.error(
+      final res = TranslationResult.error(
         originalText: text,
         errorMessage: _lastError!.toString(),
         languagePair: context.languagePair,
         processingTimeMs: stopwatch.elapsedMilliseconds,
         layerResults: layerResults,
       );
+      _setState(PipelineState.error);
+      _setState(PipelineState.idle);
+      return res;
     }
   }
   

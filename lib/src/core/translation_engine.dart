@@ -17,6 +17,7 @@ import 'translation_context.dart';
 import '../data/grammar_rules_repository.dart';
 import '../data/word_order_rules_repository.dart';
 import '../data/post_processing_rules_repository.dart';
+import '../utils/debug_logger.dart';
 
 /// Состояния жизненного цикла TranslationEngine
 enum EngineState {
@@ -292,13 +293,10 @@ _dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translat
     if (!isInitialized) {
       return {'error': 'Engine not initialized'};
     }
-    
-    return {
-      'words_cache': 'Available', // _cacheManager.getWordsMetrics(),
-      'phrases_cache': 'Available', // _cacheManager.getPhrasesMetrics(),
-      'overall_metrics': 'Available', // _cacheManager.getOverallMetrics(),
-      'memory_estimate_mb': 0.0, // _cacheManager.estimateMemoryUsage() / (1024 * 1024),
-    };
+    final metrics = _cacheManager.metrics;
+    metrics['estimated_memory_mb'] =
+        ((_cacheManager.estimatedMemoryUsage) / (1024 * 1024)).toStringAsFixed(2);
+    return metrics;
   }
   
   /// Очистить кэш
@@ -372,23 +370,16 @@ _dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translat
   
   /// Применить конфигурацию
   Future<void> _applyConfig(Map<String, dynamic> config) async {
-    // Применение настроек кэша
+    // Применение настроек кэша (пока только чтение параметров; CacheManager использует фиксированные лимиты)
     if (config.containsKey('cache')) {
       final cacheConfig = config['cache'] as Map<String, dynamic>;
-      
-      if (cacheConfig.containsKey('words_limit')) {
-        // Применение лимитов кэша (пока что сохраняем как есть)
-      }
-      
-      if (cacheConfig.containsKey('phrases_limit')) {
-        // Применение лимитов кэша
-      }
+      // TODO: при необходимости расширить CacheManager для установки лимитов/TTL в рантайме.
+      cacheConfig.toString();
     }
     
     // Применение настроек debugging
-    if (config.containsKey('debug') && config['debug'] == true) {
-      // Включение debug режима
-    }
+    final debugEnabled = (config['debug'] as bool?) ?? false;
+    DebugLogger.instance.setEnabled(debugEnabled);
   }
   
   /// Обновить статистику переводов
