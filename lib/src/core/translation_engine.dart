@@ -245,10 +245,8 @@ _dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translat
     }
     
     final stopwatch = Stopwatch()..start();
-    
+    _setState(EngineState.processing);
     try {
-      _setState(EngineState.processing);
-      
       // Создание контекста перевода если не предоставлен
       final translationContext = context ?? TranslationContext(
         sourceLanguage: sourceLanguage,
@@ -265,23 +263,27 @@ _dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translat
       // Сохранение в историю переводов (пока отключено)
       // await _userDataRepository.addTranslationHistory(result);
       
-      _setState(EngineState.ready);
-      
       return result;
       
     } catch (e) {
       stopwatch.stop();
       _lastError = e is Exception ? e : Exception('Translation failed: $e');
-      _setState(EngineState.error);
-      _errorController.add(_lastError!);
+      // Не удерживаем движок в состоянии error; публикуем событие ошибки и возвращаем результат.
+      if (!_errorController.isClosed) {
+        _errorController.add(_lastError!);
+      }
       
-      // Возвращаем результат с ошибкой
       return TranslationResult.error(
         originalText: text,
         errorMessage: _lastError!.toString(),
         languagePair: '$sourceLanguage-$targetLanguage',
         processingTimeMs: stopwatch.elapsedMilliseconds,
       );
+    } finally {
+      // Всегда возвращаемся в готовое состояние, если движок не в процессе dispose.
+      if (_state != EngineState.disposed && _state != EngineState.disposing) {
+        _setState(EngineState.ready);
+      }
     }
   }
   
@@ -328,6 +330,17 @@ _dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translat
     }
     
     await _dispose();
+  }
+  
+  /// Сброс состояния ошибок и возврат в готовое состояние (без переинициализации)
+  void reset() {
+    if (_state == EngineState.disposed || _state == EngineState.disposing) {
+      throw const EngineStateException('Cannot reset disposed engine');
+    }
+    _lastError = null;
+    if (_state != EngineState.ready) {
+      _setState(EngineState.ready);
+    }
   }
   
   /// Внутренний метод освобождения ресурсов

@@ -218,7 +218,7 @@ class DictionaryRepository {
     return entry;
   }
   
-  /// Добавить новый перевод или обновить существующий
+  /// Добавить новый перевод или обновить существующий (с немедленной записью)
   Future<DictionaryEntry> addTranslation(
     String sourceWord,
     String targetWord,
@@ -227,67 +227,82 @@ class DictionaryRepository {
     String? definition,
     int frequency = 1,
   }) async {
-    final data = {
-      'source_word': sourceWord,
-      'target_word': targetWord,
-      'language_pair': languagePair,
-      'part_of_speech': partOfSpeech,
-      'definition': definition,
-      'frequency': frequency,
-    };
+    final res = await addTranslationsBulk([
+      {
+        'source_word': sourceWord,
+        'target_word': targetWord,
+        'language_pair': languagePair,
+        'part_of_speech': partOfSpeech,
+        'definition': definition,
+        'frequency': frequency,
+      }
+    ]);
+    return res.first;
+  }
 
-    _validateData(data);
-    final transformedData = _normalize(data);
-
-    final lang = transformedData['language_pair'] as String;
-    final cache = _ensureLoaded(lang);
-
-    final existing = cache.bySource[transformedData['source_word'] as String];
-    DictionaryEntry result;
-
-    if (existing != null) {
-      // обновление
-      final updated = existing.copyWith(
-        targetWord: transformedData['target_word'] as String,
-        partOfSpeech: transformedData['part_of_speech'] as String?,
-        definition: transformedData['definition'] as String?,
-        frequency: existing.frequency + (transformedData['frequency'] as int? ?? 1),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(transformedData['updated_at'] as int),
-      );
-      cache.bySource[updated.sourceWord] = updated;
-      result = updated;
-    } else {
-      // вставка
-      final id = ++cache.maxId;
-      final entry = DictionaryEntry(
-        id: id,
-        sourceWord: transformedData['source_word'] as String,
-        targetWord: transformedData['target_word'] as String,
-        languagePair: lang,
-        partOfSpeech: transformedData['part_of_speech'] as String?,
-        definition: transformedData['definition'] as String?,
-        frequency: transformedData['frequency'] as int? ?? 1,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(transformedData['created_at'] as int),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(transformedData['updated_at'] as int),
-      );
-      cache.bySource[entry.sourceWord] = entry;
-      result = entry;
+  /// Пакетное добавление/обновление переводов с одной записью файла
+  Future<List<DictionaryEntry>> addTranslationsBulk(List<Map<String, dynamic>> items) async {
+    final results = <DictionaryEntry>[];
+    // Группируем по языковой паре для минимизации перезаписей
+    final byLang = <String, List<Map<String, dynamic>>>{};
+    for (final raw in items) {
+      _validateData(raw);
+      final normalized = _normalize(raw);
+      final lang = normalized['language_pair'] as String;
+      (byLang[lang] ??= []).add(normalized);
     }
 
-    // перезаписать файл
-    await storage.ensureLangDir(lang);
-    final file = storage.dictFile(lang);
-    await storage.rewriteJsonLines(file, cache.bySource.values.map((e) => e.toMap()));
+    for (final entry in byLang.entries) {
+      final lang = entry.key;
+      final list = entry.value;
+      final cache = _ensureLoaded(lang);
 
-    // Обновить кэш
-    final cacheKey = generateCacheKey({
-      'sourceWord': result.sourceWord,
-      'languagePair': result.languagePair,
-      'searchType': 'exact',
-    });
-    cacheManager.set(cacheKey, result);
+      for (final data in list) {
+        final existing = cache.bySource[data['source_word'] as String];
+        if (existing != null) {
+          final updated = existing.copyWith(
+            targetWord: data['target_word'] as String,
+            partOfSpeech: data['part_of_speech'] as String?,
+            definition: data['definition'] as String?,
+            frequency: existing.frequency + (data['frequency'] as int? ?? 1),
+            updatedAt: DateTime.fromMillisecondsSinceEpoch(data['updated_at'] as int),
+          );
+          cache.bySource[updated.sourceWord] = updated;
+          results.add(updated);
+        } else {
+          final id = ++cache.maxId;
+          final entry = DictionaryEntry(
+            id: id,
+            sourceWord: data['source_word'] as String,
+            targetWord: data['target_word'] as String,
+            languagePair: lang,
+            partOfSpeech: data['part_of_speech'] as String?,
+            definition: data['definition'] as String?,
+            frequency: data['frequency'] as int? ?? 1,
+            createdAt: DateTime.fromMillisecondsSinceEpoch(data['created_at'] as int),
+            updatedAt: DateTime.fromMillisecondsSinceEpoch(data['updated_at'] as int),
+          );
+          cache.bySource[entry.sourceWord] = entry;
+          results.add(entry);
+        }
+      }
 
-    return result;
+      // единичная запись на пару языков
+      await storage.ensureLangDir(lang);
+      final file = storage.dictFile(lang);
+      await storage.rewriteJsonLines(file, cache.bySource.values.map((e) => e.toMap()));
+    }
+
+    // обновить кэш точных запросов для добавленных
+    for (final r in results) {
+      final cacheKey = generateCacheKey({
+        'sourceWord': r.sourceWord,
+        'languagePair': r.languagePair,
+        'searchType': 'exact',
+      });
+      cacheManager.set(cacheKey, r);
+    }
+    return results;
   }
   
   /// Поиск переводов по частичному совпадению

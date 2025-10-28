@@ -273,7 +273,7 @@ class PhraseRepository {
     return entry;
   }
   
-  /// Добавить новую фразу или обновить существующую
+  /// Добавить новую фразу или обновить существующую (с немедленной записью)
   Future<PhraseEntry> addPhrase(
     String sourcePhrase,
     String targetPhrase,
@@ -283,65 +283,83 @@ class PhraseRepository {
     int frequency = 1,
     int confidence = 95,
   }) async {
-    final data = {
-      'source_phrase': sourcePhrase,
-      'target_phrase': targetPhrase,
-      'language_pair': languagePair,
-      'category': category,
-      'context': context,
-      'frequency': frequency,
-      'confidence': confidence,
-    };
+    final res = await addPhrasesBulk([
+      {
+        'source_phrase': sourcePhrase,
+        'target_phrase': targetPhrase,
+        'language_pair': languagePair,
+        'category': category,
+        'context': context,
+        'frequency': frequency,
+        'confidence': confidence,
+      }
+    ]);
+    return res.first;
+  }
 
-    _validateData(data);
-    final transformedData = _normalize(data);
-
-    final lang = transformedData['language_pair'] as String;
-    final cache = _ensureLoaded(lang);
-    final key = (transformedData['source_phrase'] as String);
-
-    PhraseEntry result;
-    final existing = cache.bySource[key];
-    if (existing != null) {
-      final updated = existing.copyWith(
-        targetPhrase: transformedData['target_phrase'] as String,
-        category: transformedData['category'] as String?,
-        context: transformedData['context'] as String?,
-        frequency: existing.frequency + (transformedData['frequency'] as int? ?? 1),
-        confidence: ((existing.confidence + (transformedData['confidence'] as int? ?? 95)) ~/ 2),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(transformedData['updated_at'] as int),
-      );
-      cache.bySource[key] = updated;
-      result = updated;
-    } else {
-      final id = ++cache.maxId;
-      final entry = PhraseEntry(
-        id: id,
-        sourcePhrase: key,
-        targetPhrase: transformedData['target_phrase'] as String,
-        languagePair: lang,
-        category: transformedData['category'] as String?,
-        context: transformedData['context'] as String?,
-        frequency: transformedData['frequency'] as int? ?? 1,
-        confidence: transformedData['confidence'] as int? ?? 95,
-        createdAt: DateTime.fromMillisecondsSinceEpoch(transformedData['created_at'] as int),
-        updatedAt: DateTime.fromMillisecondsSinceEpoch(transformedData['updated_at'] as int),
-      );
-      cache.bySource[key] = entry;
-      result = entry;
+  /// Пакетное добавление/обновление фраз одной записью файла
+  Future<List<PhraseEntry>> addPhrasesBulk(List<Map<String, dynamic>> items) async {
+    final results = <PhraseEntry>[];
+    final byLang = <String, List<Map<String, dynamic>>>{};
+    for (final raw in items) {
+      _validateData(raw);
+      final normalized = _normalize(raw);
+      final lang = normalized['language_pair'] as String;
+      (byLang[lang] ??= []).add(normalized);
     }
 
-    await storage.ensureLangDir(lang);
-    final file = storage.phrasesFile(lang);
-    await storage.rewriteJsonLines(file, cache.bySource.values.map((e) => e.toMap()));
+    for (final entry in byLang.entries) {
+      final lang = entry.key;
+      final list = entry.value;
+      final cache = _ensureLoaded(lang);
 
-    final cacheKey = generateCacheKey({
-      'sourcePhrase': key,
-      'languagePair': lang,
-      'searchType': 'exact',
-    });
-    cacheManager.set(cacheKey, result);
-    return result;
+      for (final data in list) {
+        final key = (data['source_phrase'] as String);
+        final existing = cache.bySource[key];
+        if (existing != null) {
+          final updated = existing.copyWith(
+            targetPhrase: data['target_phrase'] as String,
+            category: data['category'] as String?,
+            context: data['context'] as String?,
+            frequency: existing.frequency + (data['frequency'] as int? ?? 1),
+            confidence: ((existing.confidence + (data['confidence'] as int? ?? 95)) ~/ 2),
+            updatedAt: DateTime.fromMillisecondsSinceEpoch(data['updated_at'] as int),
+          );
+          cache.bySource[key] = updated;
+          results.add(updated);
+        } else {
+          final id = ++cache.maxId;
+          final entry = PhraseEntry(
+            id: id,
+            sourcePhrase: key,
+            targetPhrase: data['target_phrase'] as String,
+            languagePair: lang,
+            category: data['category'] as String?,
+            context: data['context'] as String?,
+            frequency: data['frequency'] as int? ?? 1,
+            confidence: data['confidence'] as int? ?? 95,
+            createdAt: DateTime.fromMillisecondsSinceEpoch(data['created_at'] as int),
+            updatedAt: DateTime.fromMillisecondsSinceEpoch(data['updated_at'] as int),
+          );
+          cache.bySource[key] = entry;
+          results.add(entry);
+        }
+      }
+
+      await storage.ensureLangDir(lang);
+      final file = storage.phrasesFile(lang);
+      await storage.rewriteJsonLines(file, cache.bySource.values.map((e) => e.toMap()));
+    }
+
+    for (final r in results) {
+      final cacheKey = generateCacheKey({
+        'sourcePhrase': r.sourcePhrase,
+        'languagePair': r.languagePair,
+        'searchType': 'exact',
+      });
+      cacheManager.set(cacheKey, r);
+    }
+    return results;
   }
   
   /// Поиск фраз по частичному совпадению

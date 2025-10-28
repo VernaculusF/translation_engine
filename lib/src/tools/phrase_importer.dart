@@ -81,7 +81,8 @@ class PhraseImporter {
     // Determine column indices
     final idx = _ColumnIndex.fromHeader(header);
 
-    // Process rows
+    // Process rows (batch)
+    final batch = <Map<String, dynamic>>[];
     for (int i = hasHeader ? 1 : 0; i < lines.length; i++) {
       final rowLine = lines[i].trim();
       if (rowLine.isEmpty) continue;
@@ -104,20 +105,24 @@ class PhraseImporter {
           continue;
         }
 
-        await repository.addPhrase(
-          sourcePhrase,
-          targetPhrase,
-          pair,
-          category: category,
-          context: context,
-          confidence: confidence,
-          frequency: freq,
-        );
-        ok++;
+        batch.add({
+          'source_phrase': sourcePhrase,
+          'target_phrase': targetPhrase,
+          'language_pair': pair,
+          'category': category,
+          'context': context,
+          'confidence': confidence,
+          'frequency': freq,
+        });
       } catch (e) {
         skipped++;
         errors.add('Line ${i + 1}: ${e.toString()}');
       }
+    }
+
+    if (batch.isNotEmpty) {
+      final res = await repository.addPhrasesBulk(batch);
+      ok += res.length;
     }
 
     return ImportReport(total: total, insertedOrUpdated: ok, skipped: skipped, errors: errors);
@@ -134,6 +139,7 @@ class PhraseImporter {
     }
     int total = 0, ok = 0, skipped = 0;
     final errors = <String>[];
+    final batch = <Map<String, dynamic>>[];
     for (int i = 0; i < data.length; i++) {
       final obj = data[i];
       total++;
@@ -155,13 +161,15 @@ class PhraseImporter {
           continue;
         }
         final lp = pair.isEmpty ? 'en-ru' : pair;
-        await repository.addPhrase(sourcePhrase, targetPhrase, lp, 
-            category: category, context: context, confidence: confidence, frequency: freq);
-        ok++;
+        batch.add({'source_phrase': sourcePhrase,'target_phrase': targetPhrase,'language_pair': lp,'category': category,'context': context,'confidence': confidence,'frequency': freq});
       } catch (e) {
         skipped++;
         errors.add('Item ${i + 1}: ${e.toString()}');
       }
+    }
+    if (batch.isNotEmpty) {
+      final res = await repository.addPhrasesBulk(batch);
+      ok += res.length;
     }
     return ImportReport(total: total, insertedOrUpdated: ok, skipped: skipped, errors: errors);
   }
@@ -173,6 +181,7 @@ class PhraseImporter {
     final lines = await file.readAsLines();
     int total = 0, ok = 0, skipped = 0;
     final errors = <String>[];
+    final batch = <Map<String, dynamic>>[];
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
       if (line.isEmpty) continue;
@@ -196,13 +205,15 @@ class PhraseImporter {
           continue;
         }
         final lp = pair.isEmpty ? 'en-ru' : pair;
-        await repository.addPhrase(sourcePhrase, targetPhrase, lp, 
-            category: category, context: context, confidence: confidence, frequency: freq);
-        ok++;
+        batch.add({'source_phrase': sourcePhrase,'target_phrase': targetPhrase,'language_pair': lp,'category': category,'context': context,'confidence': confidence,'frequency': freq});
       } catch (e) {
         skipped++;
         errors.add('Line ${i + 1}: ${e.toString()}');
       }
+    }
+    if (batch.isNotEmpty) {
+      final res = await repository.addPhrasesBulk(batch);
+      ok += res.length;
     }
     return ImportReport(total: total, insertedOrUpdated: ok, skipped: skipped, errors: errors);
   }

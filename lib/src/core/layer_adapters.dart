@@ -48,7 +48,8 @@ class LayerAdapter implements TranslationLayer {
     String text,
     TranslationContext context,
   ) async {
-    final result = await _layer.process(text, context);
+    // Используем оболочку с метриками и валидацией
+    final result = await _layer.processWithMetrics(text, context);
     return (processedText: result.processedText, debugInfo: result.debugInfo);
   }
 }

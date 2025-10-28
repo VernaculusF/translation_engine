@@ -126,8 +126,16 @@ class DictionaryLayer extends BaseTranslationLayer {
     final stopwatch = Stopwatch()..start();
     
     try {
-      // Токенизируем текущий текст, чтобы работать последовательно по конвейеру
-      final tokens = _tokenizeText(text);
+      // Попытаться использовать токены из PreProcessingLayer, чтобы сохранить согласованность
+      final preprocTokens = context.getMetadata<List<TextToken>>('preprocessing_tokens');
+      late final List<TextToken> tokens;
+      if (preprocTokens != null && preprocTokens.isNotEmpty) {
+        tokens = preprocTokens;
+      } else {
+        tokens = _tokenizeText(text);
+      }
+      
+      final usingPreproc = preprocTokens != null && preprocTokens.isNotEmpty;
       
       // Извлекаем только словарные токены
       final wordTokens = tokens.where((token) => token.type == TokenType.word).toList();
@@ -139,7 +147,7 @@ class DictionaryLayer extends BaseTranslationLayer {
             inputText: text,
             outputText: text,
             processingTimeMs: stopwatch.elapsedMilliseconds,
-            additionalInfo: {'reason': 'No word tokens found'},
+            additionalInfo: {'reason': 'No word tokens found', 'using_preproc_tokens': usingPreproc},
           ),
           reason: 'No words to translate',
         );
@@ -217,7 +225,9 @@ class DictionaryLayer extends BaseTranslationLayer {
       }
       
       // Сборка переведенного текста
-      final translatedText = _reconstructTextFromTokens(translatedTokens);
+      final translatedText = usingPreproc
+          ? _reconstructFromOriginal(text, translatedTokens)
+          : _reconstructTextFromTokens(translatedTokens);
       
       stopwatch.stop();
       
@@ -241,6 +251,7 @@ class DictionaryLayer extends BaseTranslationLayer {
             'total_words': totalWords,
             'successful_translations': successfulTranslations,
             'translation_rate': translationRate,
+            'using_preproc_tokens': usingPreproc,
           },
         ),
       );
@@ -252,17 +263,15 @@ class DictionaryLayer extends BaseTranslationLayer {
   }
   
   /// Простейшая токенизация текущего текста (слова и прочие сегменты)
+  /// Расширена: поддержка латиницы, кириллицы, CJK, цифр, апострофов и дефисов.
   List<TextToken> _tokenizeText(String text) {
     final tokens = <TextToken>[];
     int i = 0;
     while (i < text.length) {
-      final ch = text.codeUnitAt(i);
-      // [A-Za-z] слово
-      if ((ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122)) {
+      final ch = text[i];
+      if (_isWordChar(ch)) {
         final start = i;
-        while (i < text.length) {
-          final c = text.codeUnitAt(i);
-          if (!((c >= 65 && c <= 90) || (c >= 97 && c <= 122))) break;
+        while (i < text.length && _isWordChar(text[i])) {
           i++;
         }
         final original = text.substring(start, i);
@@ -273,27 +282,46 @@ class DictionaryLayer extends BaseTranslationLayer {
           endPosition: i,
           type: TokenType.word,
         ));
-      } else {
-        // прочий символ: сгруппируем подрядной последовательностью
+      } else if (_isWhitespace(ch)) {
         final start = i;
-        while (i < text.length) {
-          final c = text.codeUnitAt(i);
-          final isLetter = (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
-          if (isLetter) break;
+        while (i < text.length && _isWhitespace(text[i])) {
           i++;
         }
         final seg = text.substring(start, i);
-        final isWhitespace = RegExp(r"^\s+").hasMatch(seg);
         tokens.add(TextToken(
           original: seg,
           normalized: seg,
           startPosition: start,
           endPosition: i,
-          type: isWhitespace ? TokenType.whitespace : TokenType.punctuation,
+          type: ch == '\n' || ch == '\r' ? TokenType.newline : TokenType.whitespace,
         ));
+      } else {
+        // Пунктуация/прочее
+        final start = i;
+        tokens.add(TextToken(
+          original: ch,
+          normalized: ch,
+          startPosition: start,
+          endPosition: start + 1,
+          type: TokenType.punctuation,
+        ));
+        i++;
       }
     }
     return tokens;
+  }
+
+  bool _isWhitespace(String ch) {
+    return RegExp(r"\s").hasMatch(ch);
+  }
+
+  bool _isWordChar(String ch) {
+    final code = ch.codeUnitAt(0);
+    final isLatin = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+    final isDigit = code >= 48 && code <= 57;
+    final isCyrillic = (code >= 0x0400 && code <= 0x04FF);
+    final isCjk = (code >= 0x4E00 && code <= 0x9FFF);
+    return isLatin || isDigit || isCyrillic || isCjk || ch == "'" || ch == '-' || ch == '_';
   }
   
   /// Перевод отдельного слова
@@ -464,24 +492,19 @@ class DictionaryLayer extends BaseTranslationLayer {
     );
   }
   
-  /// Сборка текста из токенов
+  /// Сборка текста из токенов (локальная токенизация)
   String _reconstructTextFromTokens(List<TextToken> tokens) {
     if (tokens.isEmpty) return '';
-    
     final buffer = StringBuffer();
-    
     for (int i = 0; i < tokens.length; i++) {
       final token = tokens[i];
-      
       if (token.type == TokenType.word && token.wasNormalized) {
         buffer.write(token.normalized);
       } else {
         buffer.write(token.original);
       }
-      
       if (i < tokens.length - 1) {
         final nextToken = tokens[i + 1];
-        
         if (token.type == TokenType.word && nextToken.type == TokenType.word) {
           buffer.write(' ');
         } else if (token.type == TokenType.punctuation && nextToken.type == TokenType.word) {
@@ -489,8 +512,31 @@ class DictionaryLayer extends BaseTranslationLayer {
         }
       }
     }
-    
     return buffer.toString().trim();
+  }
+
+  /// Сборка из исходной строки по позициям токенов (предпочтительно при использовании preproc токенов)
+  String _reconstructFromOriginal(String original, List<TextToken> tokens) {
+    if (tokens.isEmpty) return original;
+    final sorted = List<TextToken>.from(tokens)..sort((a, b) => a.startPosition.compareTo(b.startPosition));
+    final buf = StringBuffer();
+    int pos = 0;
+    for (final t in sorted) {
+      if (t.startPosition > pos) {
+        buf.write(original.substring(pos, t.startPosition));
+      }
+      final isTranslated = t.metadata['translated'] == true || (t.type == TokenType.word && t.wasNormalized && t.original != t.normalized);
+      if (isTranslated && t.type == TokenType.word) {
+        buf.write(t.normalized);
+      } else {
+        buf.write(original.substring(t.startPosition, t.endPosition));
+      }
+      pos = t.endPosition;
+    }
+    if (pos < original.length) {
+      buf.write(original.substring(pos));
+    }
+    return buf.toString();
   }
   
   /// Создание debug информации

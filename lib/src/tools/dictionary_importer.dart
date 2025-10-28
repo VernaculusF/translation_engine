@@ -80,7 +80,8 @@ class DictionaryImporter {
     // Determine column indices
     final idx = _ColumnIndex.fromHeader(header);
 
-    // Process rows
+    // Process rows (batch)
+    final batch = <Map<String, dynamic>>[];
     for (int i = hasHeader ? 1 : 0; i < lines.length; i++) {
       final rowLine = lines[i].trim();
       if (rowLine.isEmpty) continue;
@@ -100,19 +101,23 @@ class DictionaryImporter {
           continue;
         }
 
-        await repository.addTranslation(
-          source,
-          target,
-          pair,
-          partOfSpeech: pos,
-          definition: def,
-          frequency: freq,
-        );
-        ok++;
+        batch.add({
+          'source_word': source,
+          'target_word': target,
+          'language_pair': pair,
+          'part_of_speech': pos,
+          'definition': def,
+          'frequency': freq,
+        });
       } catch (e) {
         skipped++;
         errors.add('Line ${i + 1}: ${e.toString()}');
       }
+    }
+
+    if (batch.isNotEmpty) {
+      final res = await repository.addTranslationsBulk(batch);
+      ok += res.length;
     }
 
     return ImportReport(total: total, insertedOrUpdated: ok, skipped: skipped, errors: errors);
@@ -129,6 +134,7 @@ class DictionaryImporter {
     }
     int total = 0, ok = 0, skipped = 0;
     final errors = <String>[];
+    final batch = <Map<String, dynamic>>[];
     for (int i = 0; i < data.length; i++) {
       final obj = data[i];
       total++;
@@ -146,12 +152,15 @@ class DictionaryImporter {
           continue;
         }
         final lp = pair.isEmpty ? 'en-ru' : pair;
-        await repository.addTranslation(source, target, lp, partOfSpeech: pos, definition: def, frequency: freq);
-        ok++;
+        batch.add({'source_word': source,'target_word': target,'language_pair': lp,'part_of_speech': pos,'definition': def,'frequency': freq});
       } catch (e) {
         skipped++;
         errors.add('Item ${i + 1}: ${e.toString()}');
       }
+    }
+    if (batch.isNotEmpty) {
+      final res = await repository.addTranslationsBulk(batch);
+      ok += res.length;
     }
     return ImportReport(total: total, insertedOrUpdated: ok, skipped: skipped, errors: errors);
   }
@@ -163,6 +172,7 @@ class DictionaryImporter {
     final lines = await file.readAsLines();
     int total = 0, ok = 0, skipped = 0;
     final errors = <String>[];
+    final batch = <Map<String, dynamic>>[];
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
       if (line.isEmpty) continue;
@@ -182,12 +192,15 @@ class DictionaryImporter {
           continue;
         }
         final lp = pair.isEmpty ? 'en-ru' : pair;
-        await repository.addTranslation(source, target, lp, partOfSpeech: pos, definition: def, frequency: freq);
-        ok++;
+        batch.add({'source_word': source,'target_word': target,'language_pair': lp,'part_of_speech': pos,'definition': def,'frequency': freq});
       } catch (e) {
         skipped++;
         errors.add('Line ${i + 1}: ${e.toString()}');
       }
+    }
+    if (batch.isNotEmpty) {
+      final res = await repository.addTranslationsBulk(batch);
+      ok += res.length;
     }
     return ImportReport(total: total, insertedOrUpdated: ok, skipped: skipped, errors: errors);
   }

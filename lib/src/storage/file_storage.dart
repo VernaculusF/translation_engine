@@ -49,30 +49,66 @@ class FileStorageService {
     }
   }
 
-  // Rewrite entire JSONL file from iterable of Map
-  Future<void> rewriteJsonLines(File file, Iterable<Map<String, dynamic>> items) async {
-    if (!file.parent.existsSync()) file.parent.createSync(recursive: true);
-    final sink = file.openWrite(mode: FileMode.write);
+  // Acquire a simple file lock using an adjacent .lock file (best-effort)
+  Future<T> _withFileLock<T>(File target, Future<T> Function() action) async {
+    final lockPath = '${target.path}.lock';
+    final lockFile = File(lockPath);
     try {
-      for (final m in items) {
-        sink.writeln(jsonEncode(m));
+      // Try to create lock exclusively; if exists, wait shortly and retry
+      int attempts = 0;
+      while (true) {
+        try {
+          lockFile.createSync(exclusive: true);
+          break;
+        } catch (_) {
+          if (attempts++ > 50) {
+            // Give up after ~5s
+            break;
+          }
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
       }
+      return await action();
     } finally {
-      await sink.flush();
-      await sink.close();
+      try { if (lockFile.existsSync()) lockFile.deleteSync(); } catch (_) {}
     }
   }
 
-  // Append single JSON object as a JSONL line
+  // Rewrite entire JSONL file from iterable of Map atomically (tmp + rename)
+  Future<void> rewriteJsonLines(File file, Iterable<Map<String, dynamic>> items) async {
+    if (!file.parent.existsSync()) file.parent.createSync(recursive: true);
+    final tmp = File('${file.path}.tmp');
+    await _withFileLock(file, () async {
+      IOSink? sink;
+      try {
+        sink = tmp.openWrite(mode: FileMode.write);
+        for (final m in items) {
+          sink.writeln(jsonEncode(m));
+        }
+        await sink.flush();
+      } finally {
+        await sink?.close();
+      }
+      // Replace original atomically where possible
+      if (file.existsSync()) {
+        try { file.deleteSync(); } catch (_) {}
+      }
+      tmp.renameSync(file.path);
+    });
+  }
+
+  // Append single JSON object as a JSONL line (with best-effort lock)
   Future<void> appendJsonLine(File file, Map<String, dynamic> item) async {
     if (!file.parent.existsSync()) file.parent.createSync(recursive: true);
-    final sink = file.openWrite(mode: FileMode.append);
-    try {
-      sink.writeln(jsonEncode(item));
-    } finally {
-      await sink.flush();
-      await sink.close();
-    }
+    await _withFileLock(file, () async {
+      final sink = file.openWrite(mode: FileMode.append);
+      try {
+        sink.writeln(jsonEncode(item));
+      } finally {
+        await sink.flush();
+        await sink.close();
+      }
+    });
   }
 }
 

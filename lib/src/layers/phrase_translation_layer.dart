@@ -205,16 +205,109 @@ class PhraseTranslationLayer extends BaseTranslationLayer {
         );
       }
       
-      // Иначе без изменений (будущая реализация — поиск n-грамм)
-      return LayerResult.noChange(
-        text: text,
-        debugInfo: _createDebugInfo(
-          inputText: text,
-          outputText: text,
-          processingTimeMs: stopwatch.elapsedMilliseconds,
-          additionalInfo: {'reason': 'No phrases found (exact)'},
-        ),
-        reason: 'No translatable phrases found',
+      // Если точного совпадения для всей строки нет — выполнить n-gram поиск по токенам
+      final preproc = context.getMetadata<List<TextToken>>('preprocessing_tokens');
+      if (preproc == null || preproc.isEmpty) {
+        return LayerResult.noChange(
+          text: text,
+          debugInfo: _createDebugInfo(
+            inputText: text,
+            outputText: text,
+            processingTimeMs: stopwatch.elapsedMilliseconds,
+            additionalInfo: {'reason': 'No phrases found (exact)', 'ngram': 'skipped_no_tokens'},
+          ),
+          reason: 'No translatable phrases found',
+        );
+      }
+
+      // Выделяем только слова с позициями
+      final ngramWordTokens = preproc.where((t) => t.type == TokenType.word).toList();
+      if (ngramWordTokens.length < _minPhraseWords) {
+        return LayerResult.noChange(
+          text: text,
+          debugInfo: _createDebugInfo(
+            inputText: text,
+            outputText: text,
+            processingTimeMs: stopwatch.elapsedMilliseconds,
+            additionalInfo: {'reason': 'No phrases found (too_few_words)'},
+          ),
+          reason: 'No translatable phrases found',
+        );
+      }
+
+      // Поиск n-грамм (от длинных к коротким), без перекрытий
+      final matches = <_PhraseMatch>[];
+      final used = List<bool>.filled(ngramWordTokens.length, false);
+      for (int len = _maxPhraseWords; len >= _minPhraseWords; len--) {
+        for (int i = 0; i + len <= ngramWordTokens.length; i++) {
+          // Пропускаем окна, если пересекаются с уже выбранными
+          bool overlapped = false;
+          for (int k = i; k < i + len; k++) {
+            if (used[k]) { overlapped = true; break; }
+          }
+          if (overlapped) continue;
+          final window = ngramWordTokens.sublist(i, i + len);
+          final phraseNorm = window.map((t) => t.normalized).join(' ');
+          final found = await _phraseRepository.getPhraseTranslation(
+            phraseNorm,
+            context.languagePair,
+          );
+          if (found != null) {
+            matches.add(_PhraseMatch(
+              startWordIndex: i,
+              endWordIndex: i + len - 1,
+              startPos: window.first.startPosition,
+              endPos: window.last.endPosition,
+              source: phraseNorm,
+              target: found.targetPhrase,
+              confidence: math.max(0.6, (found.confidence / 100.0) + (len - 2) * 0.05).clamp(0.0, 1.0),
+            ));
+            for (int k = i; k < i + len; k++) {
+              used[k] = true;
+            }
+          }
+        }
+      }
+
+      if (matches.isEmpty) {
+        return LayerResult.noChange(
+          text: text,
+          debugInfo: _createDebugInfo(
+            inputText: text,
+            outputText: text,
+            processingTimeMs: stopwatch.elapsedMilliseconds,
+            additionalInfo: {'reason': 'No phrases found (ngram)'},
+          ),
+          reason: 'No translatable phrases found',
+        );
+      }
+
+      // Реконструируем текст из оригинала, заменяя найденные диапазоны
+      matches.sort((a,b) => a.startPos.compareTo(b.startPos));
+      final buf = StringBuffer();
+      int pos = 0;
+      for (final m in matches) {
+        if (m.startPos > pos) buf.write(text.substring(pos, m.startPos));
+        buf.write(m.target);
+        pos = m.endPos;
+      }
+      if (pos < text.length) buf.write(text.substring(pos));
+      final processed = buf.toString();
+
+      final layerInfo = _createDebugInfo(
+        inputText: text,
+        outputText: processed,
+        processingTimeMs: stopwatch.elapsedMilliseconds,
+        additionalInfo: {
+          'ngram_matches': matches.length,
+          'windows_used': used.where((v) => v).length,
+        },
+      );
+
+      return LayerResult.success(
+        processedText: processed,
+        confidence: matches.map((m) => m.confidence).reduce((a,b)=>a+b) / matches.length,
+        debugInfo: layerInfo,
       );
       
     } catch (e) {
@@ -222,7 +315,7 @@ class PhraseTranslationLayer extends BaseTranslationLayer {
       throw LayerException(name, 'Phrase translation failed', e);
     }
   }
-  
+
   /// Создание debug информации
   LayerDebugInfo _createDebugInfo({
     required String inputText,
@@ -248,4 +341,23 @@ class PhraseTranslationLayer extends BaseTranslationLayer {
       },
     );
   }
+}
+
+class _PhraseMatch {
+  final int startWordIndex;
+  final int endWordIndex;
+  final int startPos;
+  final int endPos;
+  final String source;
+  final String target;
+  final double confidence;
+  _PhraseMatch({
+    required this.startWordIndex,
+    required this.endWordIndex,
+    required this.startPos,
+    required this.endPos,
+    required this.source,
+    required this.target,
+    required this.confidence,
+  });
 }
