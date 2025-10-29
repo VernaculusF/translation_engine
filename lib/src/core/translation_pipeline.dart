@@ -138,7 +138,15 @@ class TranslationPipeline {
   List<TranslationLayer> get layers => List.unmodifiable(_layers);
   
   /// Проверить доступность репозиториев для слоев
-  bool get hasDataAccess => true; // All repositories are required in constructor
+  bool get hasDataAccess {
+    try {
+      return dictionaryRepository.storage.rootExists &&
+             phraseRepository.storage.rootExists &&
+             userDataRepository.storage.rootExists;
+    } catch (_) {
+      return false;
+    }
+  }
   
   /// Статистика pipeline
   Map<String, dynamic> get statistics => {
@@ -409,28 +417,33 @@ class TranslationPipeline {
     if (layerResults.isEmpty) {
       return 0.0;
     }
-    
-    // Простой алгоритм: среднее от всех слоев
-    final successfulLayers = layerResults.where((info) => !info.hasError).length;
+
     final totalLayers = layerResults.length;
-    
-    if (totalLayers == 0) return 0.0;
-    
-    final baseConfidence = successfulLayers / totalLayers;
-    
-    // Корректировка на основе cache hits
-    final totalCacheHits = layerResults
-        .fold(0, (sum, info) => sum + info.cacheHits);
-    final totalItemsProcessed = layerResults
-        .fold(0, (sum, info) => sum + info.itemsProcessed);
-    
-    final cacheHitRate = totalItemsProcessed > 0 
-        ? totalCacheHits / totalItemsProcessed 
-        : 0.0;
-    
-    // Увеличиваем confidence при высоком cache hit rate
-    final adjustedConfidence = baseConfidence + (cacheHitRate * 0.2);
-    
-    return adjustedConfidence.clamp(0.0, 1.0);
+    final successfulLayers = layerResults.where((i) => !i.hasError).length;
+    final modifiedLayers = layerResults.where((i) => i.wasModified && !i.hasError).length;
+
+    final successRate = totalLayers > 0 ? successfulLayers / totalLayers : 0.0;
+    final modifiedRate = totalLayers > 0 ? modifiedLayers / totalLayers : 0.0;
+
+    // Средний уровень изменений на элемент (защита от деления на ноль)
+    double modImpact = 0.0;
+    int counted = 0;
+    for (final info in layerResults) {
+      final items = info.itemsProcessed;
+      if (items > 0) {
+        modImpact += (info.modificationsCount / items).clamp(0.0, 1.0);
+        counted++;
+      }
+    }
+    if (counted > 0) modImpact /= counted;
+
+    // Учитываем кэш-хиты
+    final totalCacheHits = layerResults.fold(0, (sum, i) => sum + i.cacheHits);
+    final totalItemsProcessed = layerResults.fold(0, (sum, i) => sum + i.itemsProcessed);
+    final cacheHitRate = totalItemsProcessed > 0 ? totalCacheHits / totalItemsProcessed : 0.0;
+
+    // Взвешенная формула: успешность 40%, модификации 40%, плотность изменений 20%, бонус за кэш 10%
+    double c = 0.4 * successRate + 0.4 * modifiedRate + 0.2 * modImpact + 0.1 * cacheHitRate;
+    return c.clamp(0.0, 1.0);
   }
 }

@@ -40,6 +40,7 @@ print(report.toMap());
 
 ## 6. Метрики и наблюдаемость
 - engine.getMetrics() содержит: engine, cache, queue, timeouts, logging, metrics
+- hasDataAccess отражён в statistics/data_access_available
 - Логи по слоям/пайплайну появляются при debug=true
 
 ## 7. DbCommand (по желанию на локалке)
@@ -47,9 +48,10 @@ print(report.toMap());
 - --sha256: несоответствие — отказ; корректный префикс — успех
 - retry/backoff: временные 5xx не ломают процесс
 
-## 8. Очередь/таймаут
+## 8. Очередь/таймаут/уверенность
 - Вызвать N параллельных translate: pending растёт, при переполнении — drop, лог `queue.drop`
 - Длинная обработка — timeout, лог `translate.timeout`
+- Проверить confidence: при большем числе модифицированных слоёв и cache hits метрика растёт по новой формуле
 
 ## 9. Сброс и завершение
 - engine.reset() — снимает ошибку, state=ready

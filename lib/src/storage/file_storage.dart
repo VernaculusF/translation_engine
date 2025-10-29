@@ -9,6 +9,8 @@ class FileStorageService {
 
   FileStorageService({required this.rootDir});
 
+  bool get rootExists => Directory(rootDir).existsSync();
+
   Directory langDir(String languagePair) => Directory(_p(rootDir, languagePair));
 
   File dictFile(String languagePair) => File(_p(rootDir, languagePair, 'dictionary.jsonl'));
