@@ -238,7 +238,7 @@ class PostProcessingLayer extends BaseTranslationLayer {
       );
       
     } catch (e, stackTrace) {
-      _logger.error('$name: Post-processing failed', e, stackTrace);
+      _logger.error('$name: Post-processing failed', error: e, stackTrace: stackTrace);
       return _createResult(
         text,
         false,

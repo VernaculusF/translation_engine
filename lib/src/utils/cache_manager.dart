@@ -92,14 +92,27 @@ class PhraseCacheEntry {
   String toString() => 'PhraseCacheEntry($phrase -> $translation [$langPair])';
 }
 
+/// Обертка для generic-кэша с TTL
+class _GenericCacheEntry {
+  final Object value;
+  int lastUsed;
+  _GenericCacheEntry(this.value, this.lastUsed);
+}
+
 /// LRU Cache Manager для слов и фраз
 class CacheManager {
-  // Лимиты согласно AiRules.md
+  // Backward-compatible constants for tests and defaults
   static const int MAX_WORDS_CACHE = 10000;
   static const int MAX_PHRASES_CACHE = 5000;
+  static const int CACHE_TTL_MS = 30 * 60 * 1000; // 30 минут
+
+  // Конфигурируемые лимиты
+  int _maxWords = MAX_WORDS_CACHE;
+  int _maxPhrases = MAX_PHRASES_CACHE;
+  int _maxGeneric = MAX_WORDS_CACHE;
   
   // Время жизни записей в кэше (в миллисекундах)
-  static const int CACHE_TTL_MS = 30 * 60 * 1000; // 30 минут
+  int _ttlMs = CACHE_TTL_MS; // 30 минут
   
   // Singleton pattern
   static final CacheManager _instance = CacheManager._internal();
@@ -109,15 +122,26 @@ class CacheManager {
   // LRU кэши с использованием LinkedHashMap для O(1) операций
   final LinkedHashMap<String, WordCacheEntry> _wordsCache = LinkedHashMap();
   final LinkedHashMap<String, PhraseCacheEntry> _phrasesCache = LinkedHashMap();
+  final LinkedHashMap<String, _GenericCacheEntry> _genericCache = LinkedHashMap();
   
   // Счетчики для метрик
   int _wordHits = 0;
   int _wordMisses = 0;
   int _phraseHits = 0;
   int _phraseMisses = 0;
-  
-  // Дополнительный кэш для общих данных
-  final Map<String, dynamic> _genericCache = {};
+  int _genericHits = 0;
+  int _genericMisses = 0;
+
+  /// Конфигурирование лимитов и TTL
+  void configure({int? wordsLimit, int? phrasesLimit, int? genericLimit, int? ttlMs}) {
+    if (wordsLimit != null) _maxWords = wordsLimit;
+    if (phrasesLimit != null) _maxPhrases = phrasesLimit;
+    if (genericLimit != null) _maxGeneric = genericLimit;
+    if (ttlMs != null) _ttlMs = ttlMs;
+    _evictWordsIfNeeded();
+    _evictPhrasesIfNeeded();
+    _evictGenericIfNeeded();
+  }
 
   /// Получение слова из кэша
   WordCacheEntry? getWord(String word, String langPair) {
@@ -127,7 +151,7 @@ class CacheManager {
     if (entry != null) {
       // Проверяем TTL
       final now = DateTime.now().millisecondsSinceEpoch;
-      if (now - entry.lastUsed > CACHE_TTL_MS) {
+      if (now - entry.lastUsed > _ttlMs) {
         _wordMisses++;
         return null; // Expired
       }
@@ -171,7 +195,7 @@ class CacheManager {
     if (entry != null) {
       // Проверяем TTL
       final now = DateTime.now().millisecondsSinceEpoch;
-      if (now - entry.lastUsed > CACHE_TTL_MS) {
+      if (now - entry.lastUsed > _ttlMs) {
         _phraseMisses++;
         return null; // Expired
       }
@@ -209,7 +233,7 @@ class CacheManager {
 
   /// Удаление старых записей из кэша слов при превышении лимита
   void _evictWordsIfNeeded() {
-    while (_wordsCache.length > MAX_WORDS_CACHE) {
+    while (_wordsCache.length > _maxWords) {
       // Удаляем первый элемент (least recently used)
       _wordsCache.remove(_wordsCache.keys.first);
     }
@@ -217,7 +241,7 @@ class CacheManager {
 
   /// Удаление старых записей из кэша фраз при превышении лимита
   void _evictPhrasesIfNeeded() {
-    while (_phrasesCache.length > MAX_PHRASES_CACHE) {
+    while (_phrasesCache.length > _maxPhrases) {
       // Удаляем первый элемент (least recently used)
       _phrasesCache.remove(_phrasesCache.keys.first);
     }
@@ -253,7 +277,7 @@ class CacheManager {
     // Cleanup words cache
     final expiredWords = <String>[];
     for (final entry in _wordsCache.entries) {
-      if (now - entry.value.lastUsed > CACHE_TTL_MS) {
+      if (now - entry.value.lastUsed > _ttlMs) {
         expiredWords.add(entry.key);
       }
     }
@@ -265,7 +289,7 @@ class CacheManager {
     // Cleanup phrases cache
     final expiredPhrases = <String>[];
     for (final entry in _phrasesCache.entries) {
-      if (now - entry.value.lastUsed > CACHE_TTL_MS) {
+      if (now - entry.value.lastUsed > _ttlMs) {
         expiredPhrases.add(entry.key);
       }
     }
@@ -333,18 +357,22 @@ class CacheManager {
     return {
       'words_count': wordsCount,
       'phrases_count': phrasesCount,
-      'total_count': totalCount,
+      'generic_count': _genericCache.length,
+      'total_count': totalCount + _genericCache.length,
       'estimated_memory_bytes': estimatedMemoryUsage,
       'word_hits': _wordHits,
       'word_misses': _wordMisses,
       'phrase_hits': _phraseHits,
       'phrase_misses': _phraseMisses,
+      'generic_hits': _genericHits,
+      'generic_misses': _genericMisses,
       'word_hit_rate': wordHitRate,
       'phrase_hit_rate': phraseHitRate,
       'overall_hit_rate': overallHitRate,
-      'max_words': MAX_WORDS_CACHE,
-      'max_phrases': MAX_PHRASES_CACHE,
-      'ttl_ms': CACHE_TTL_MS,
+      'max_words': _maxWords,
+      'max_phrases': _maxPhrases,
+      'max_generic': _maxGeneric,
+      'ttl_ms': _ttlMs,
     };
   }
 
@@ -364,7 +392,7 @@ class CacheManager {
     
     // Проверяем TTL
     final now = DateTime.now().millisecondsSinceEpoch;
-    return now - entry.lastUsed <= CACHE_TTL_MS;
+    return now - entry.lastUsed <= _ttlMs;
   }
 
   /// Проверка наличия фразы в кэше (без влияния на LRU)
@@ -375,7 +403,7 @@ class CacheManager {
     
     // Проверяем TTL
     final now = DateTime.now().millisecondsSinceEpoch;
-    return now - entry.lastUsed <= CACHE_TTL_MS;
+    return now - entry.lastUsed <= _ttlMs;
   }
 
   /// Получение всех ключей слов (для отладки)
@@ -386,9 +414,19 @@ class CacheManager {
 
   /// Общий метод для получения данных из кэша
   T? get<T>(String key) {
-    // Проверяем общий кэш сначала
-    if (_genericCache.containsKey(key)) {
-      return _genericCache[key] as T?;
+    // Generic cache with TTL and LRU
+    final generic = _genericCache.remove(key);
+    if (generic != null) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - generic.lastUsed <= _ttlMs) {
+        generic.lastUsed = now;
+        _genericCache[key] = generic; // move to MRU
+        _genericHits++;
+        return generic.value as T?;
+      } else {
+        _genericMisses++;
+        return null;
+      }
     }
     
     // Пытаемся найти среди слов
@@ -423,8 +461,11 @@ class CacheManager {
     } else if (value is PhraseCacheEntry) {
       putPhrase(value);
     } else {
-      // Сохраняем в общий кэш
-      _genericCache[key] = value;
+      // Сохраняем в общий кэш с TTL и LRU
+      final now = DateTime.now().millisecondsSinceEpoch;
+      _genericCache.remove(key);
+      _genericCache[key] = _GenericCacheEntry(value as Object, now);
+      _evictGenericIfNeeded();
     }
   }
 
@@ -450,6 +491,12 @@ class CacheManager {
     return removed;
   }
 
+  void _evictGenericIfNeeded() {
+    while (_genericCache.length > _maxGeneric) {
+      _genericCache.remove(_genericCache.keys.first);
+    }
+  }
+
   /// Получение всех ключей
   List<String> getAllKeys() {
     return [..._genericCache.keys, ...wordKeys, ...phraseKeys];
@@ -457,8 +504,9 @@ class CacheManager {
 
   @override
   String toString() {
-    return 'CacheManager(words: $wordsCount/$MAX_WORDS_CACHE, '
-           'phrases: $phrasesCount/$MAX_PHRASES_CACHE, '
+    return 'CacheManager(words: $wordsCount/$_maxWords, '
+           'phrases: $phrasesCount/$_maxPhrases, '
+           'generic: ${_genericCache.length}/$_maxGeneric, '
            'hitRate: ${(overallHitRate * 100).toStringAsFixed(1)}%, '
            'memory: ${(estimatedMemoryUsage / 1024 / 1024).toStringAsFixed(2)}MB)';
   }

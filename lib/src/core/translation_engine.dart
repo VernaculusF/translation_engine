@@ -7,6 +7,7 @@ library;
 import 'dart:async';
 import 'dart:io';
 
+import '../core/engine_config.dart';
 import '../data/dictionary_repository.dart';
 import '../data/phrase_repository.dart';
 import '../data/user_data_repository.dart';
@@ -18,6 +19,10 @@ import '../data/grammar_rules_repository.dart';
 import '../data/word_order_rules_repository.dart';
 import '../data/post_processing_rules_repository.dart';
 import '../utils/debug_logger.dart';
+import '../utils/metrics.dart';
+import '../utils/rate_limiter.dart';
+import '../utils/tracing.dart';
+import 'package:path/path.dart' as p;
 
 /// Состояния жизненного цикла TranslationEngine
 enum EngineState {
@@ -89,8 +94,19 @@ class TranslationEngine {
   int _translationsCount = 0;
   DateTime? _lastTranslationTime;
   Duration _totalProcessingTime = Duration.zero;
-  
-  TranslationEngine._();
+
+  // Serialization chain for translate calls
+  late Future<void> _serializeChain;
+
+  // Rate limiting / queueing
+  SimpleRateLimiter? _rateLimiter;
+  int _pendingRequests = 0;
+  int _maxPendingRequests = 0; // 0 = unlimited
+  Duration? _requestTimeout; // null = no timeout
+
+  // Config
+
+  TranslationEngine._() : _serializeChain = Future.value();
   
   /// Получить singleton instance TranslationEngine
   factory TranslationEngine() {
@@ -157,7 +173,7 @@ class TranslationEngine {
       _setState(EngineState.initializing);
       
       // Инициализация Data Layer компонентов (файловое хранилище)
-_dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translation_data';
+      _dataPath = await _prepareDataPath(customDatabasePath);
       _cacheManager = CacheManager();
 
       // Инициализация репозиториев (файловые JSONL)
@@ -230,61 +246,131 @@ _dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translat
     required String targetLanguage,
     TranslationContext? context,
   }) async {
-    // Валидация состояния
-    if (!isReady) {
-      throw EngineStateException('Engine is not ready. Current state: $_state');
-    }
-    
-    // Валидация входных данных
-    if (text.isEmpty) {
+    _pendingRequests++;
+    final traceId = newTraceId();
+    DebugLogger.instance.info('translate.start', fields: {
+      'trace_id': traceId,
+      'lang_pair': '$sourceLanguage-$targetLanguage',
+      'queued': _pendingRequests - 1,
+    });
+
+    // Queue limit check (drop policy)
+    if (_maxPendingRequests > 0 && _pendingRequests > _maxPendingRequests) {
+      DebugLogger.instance.warning('queue.drop', fields: {
+        'trace_id': traceId,
+        'pending': _pendingRequests,
+        'max_pending': _maxPendingRequests,
+      });
+      _pendingRequests--;
       return TranslationResult.error(
         originalText: text,
-        errorMessage: 'Empty text provided',
+        errorMessage: 'Queue is full (max $_maxPendingRequests pending) — request dropped',
         languagePair: '$sourceLanguage-$targetLanguage',
         processingTimeMs: 0,
       );
     }
-    
-    final stopwatch = Stopwatch()..start();
-    _setState(EngineState.processing);
+
     try {
-      // Создание контекста перевода если не предоставлен
-      final translationContext = context ?? TranslationContext(
-        sourceLanguage: sourceLanguage,
-        targetLanguage: targetLanguage,
-      );
-      
-      // Выполнение перевода через pipeline
-      final result = await _pipeline.process(text, translationContext);
-      
-      // Обновление статистики
-      stopwatch.stop();
-      _updateStatistics(stopwatch.elapsed);
-      
-      // Сохранение в историю переводов (пока отключено)
-      // await _userDataRepository.addTranslationHistory(result);
-      
-      return result;
-      
-    } catch (e) {
-      stopwatch.stop();
-      _lastError = e is Exception ? e : Exception('Translation failed: $e');
-      // Не удерживаем движок в состоянии error; публикуем событие ошибки и возвращаем результат.
-      if (!_errorController.isClosed) {
-        _errorController.add(_lastError!);
+      final future = _runSerialized(() async {
+        // Rate limiting
+        if (_rateLimiter != null) {
+          final wait = _rateLimiter!.untilNextAllowed();
+          if (wait > Duration.zero) {
+            DebugLogger.instance.debug('rate_limit.wait', fields: {
+              'trace_id': traceId,
+              'wait_ms': wait.inMilliseconds,
+            });
+          }
+          await _rateLimiter!.waitTurn();
+        }
+
+        // Валидация состояния
+        if (!isReady) {
+          throw EngineStateException('Engine is not ready. Current state: $_state');
+        }
+        
+        // Валидация входных данных
+        if (text.isEmpty) {
+          return TranslationResult.error(
+            originalText: text,
+            errorMessage: 'Empty text provided',
+            languagePair: '$sourceLanguage-$targetLanguage',
+            processingTimeMs: 0,
+          );
+        }
+        
+        final stopwatch = Stopwatch()..start();
+        _setState(EngineState.processing);
+        try {
+          // Создание контекста перевода если не предоставлен
+          final translationContext = context ?? TranslationContext(
+            sourceLanguage: sourceLanguage,
+            targetLanguage: targetLanguage,
+          );
+          // propagate trace id
+          translationContext.setMetadata('trace_id', traceId);
+          
+          // Выполнение перевода через pipeline
+          final result = await _pipeline.process(text, translationContext);
+          
+          // Обновление статистики
+          stopwatch.stop();
+          _updateStatistics(stopwatch.elapsed);
+          MetricsRegistry.instance.timer('engine.translate').observe(stopwatch.elapsed);
+          
+          DebugLogger.instance.info('translate.end', fields: {
+            'trace_id': traceId,
+            'processing_time_ms': stopwatch.elapsedMilliseconds,
+            'lang_pair': translationContext.languagePair,
+          });
+          
+          return result;
+          
+        } catch (e, st) {
+          stopwatch.stop();
+          _lastError = e is Exception ? e : Exception('Translation failed: $e');
+          // Не удерживаем движок в состоянии error; публикуем событие ошибки и возвращаем результат.
+          if (!_errorController.isClosed) {
+            _errorController.add(_lastError!);
+          }
+          MetricsRegistry.instance.counter('engine.errors').inc();
+          DebugLogger.instance.error('translate.error', error: e, stackTrace: st, fields: {
+            'trace_id': traceId,
+            'processing_time_ms': stopwatch.elapsedMilliseconds,
+            'lang_pair': '$sourceLanguage-$targetLanguage',
+          });
+          
+          return TranslationResult.error(
+            originalText: text,
+            errorMessage: _lastError!.toString(),
+            languagePair: '$sourceLanguage-$targetLanguage',
+            processingTimeMs: stopwatch.elapsedMilliseconds,
+          );
+        } finally {
+          // Всегда возвращаемся в готовое состояние, если движок не в процессе dispose.
+          if (_state != EngineState.disposed && _state != EngineState.disposing) {
+            _setState(EngineState.ready);
+          }
+        }
+      });
+      if (_requestTimeout != null && _requestTimeout! > Duration.zero) {
+        return await future.timeout(_requestTimeout!, onTimeout: () {
+          DebugLogger.instance.error('translate.timeout', fields: {
+            'trace_id': traceId,
+            'timeout_ms': _requestTimeout!.inMilliseconds,
+            'lang_pair': '$sourceLanguage-$targetLanguage',
+          });
+          return TranslationResult.error(
+            originalText: text,
+            errorMessage: 'Translation timed out after ${_requestTimeout!.inMilliseconds} ms',
+            languagePair: '$sourceLanguage-$targetLanguage',
+            processingTimeMs: _requestTimeout!.inMilliseconds,
+          );
+        });
       }
-      
-      return TranslationResult.error(
-        originalText: text,
-        errorMessage: _lastError!.toString(),
-        languagePair: '$sourceLanguage-$targetLanguage',
-        processingTimeMs: stopwatch.elapsedMilliseconds,
-      );
+      return await future;
     } finally {
-      // Всегда возвращаемся в готовое состояние, если движок не в процессе dispose.
-      if (_state != EngineState.disposed && _state != EngineState.disposing) {
-        _setState(EngineState.ready);
-      }
+      _pendingRequests--;
     }
   }
   
@@ -318,6 +404,19 @@ _dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translat
       default:
         _cacheManager.clear();
         break;
+    }
+  }
+
+  // Простая сериализация вызовов translate, чтобы исключить параллельную обработку
+  Future<T> _runSerialized<T>(Future<T> Function() action) async {
+    final prev = _serializeChain;
+    final done = Completer<void>();
+    _serializeChain = prev.then((_) => done.future);
+    try {
+      await prev;
+      return await action();
+    } finally {
+      if (!done.isCompleted) done.complete();
     }
   }
   
@@ -368,18 +467,66 @@ _dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translat
     }
   }
   
+  /// Подготовить путь к данным: корректно соединить путь, создать директорию при необходимости
+  Future<String> _prepareDataPath(String? customDatabasePath) async {
+    try {
+      final base = customDatabasePath?.trim().isNotEmpty == true
+          ? customDatabasePath!.trim()
+          : p.join(Directory.current.path, 'translation_data');
+      final dir = Directory(base);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      // Проба записи/чтения (best-effort)
+      final probe = File(p.join(base, '.write_probe'));
+      await probe.writeAsString('ok', mode: FileMode.write, flush: true);
+      await probe.delete();
+      return base;
+    } catch (e) {
+      throw EngineInitializationException('Failed to prepare data directory: $e');
+    }
+  }
+
   /// Применить конфигурацию
   Future<void> _applyConfig(Map<String, dynamic> config) async {
-    // Применение настроек кэша (пока только чтение параметров; CacheManager использует фиксированные лимиты)
+    // Cache
     if (config.containsKey('cache')) {
-      final cacheConfig = config['cache'] as Map<String, dynamic>;
-      // TODO: при необходимости расширить CacheManager для установки лимитов/TTL в рантайме.
-      cacheConfig.toString();
+      final cacheConfig = Map<String, dynamic>.from(config['cache'] as Map);
+      final wordsLimit = cacheConfig['words_limit'] as int?;
+      final phrasesLimit = cacheConfig['phrases_limit'] as int?;
+      final ttlSeconds = cacheConfig['ttl_seconds'] as int?;
+      _cacheManager.configure(
+        wordsLimit: wordsLimit,
+        phrasesLimit: phrasesLimit,
+        genericLimit: (wordsLimit ?? 10000) + (phrasesLimit ?? 5000),
+        ttlMs: ttlSeconds != null ? ttlSeconds * 1000 : null,
+      );
     }
     
-    // Применение настроек debugging
+    // Debugging / logging
     final debugEnabled = (config['debug'] as bool?) ?? false;
     DebugLogger.instance.setEnabled(debugEnabled);
+    final levelStr = (config['log_level'] as String?) ?? LogLevel.warning.toString();
+    final levelName = levelStr.contains('.') ? levelStr.split('.').last : levelStr;
+    final level = LogLevel.values.firstWhere(
+      (l) => l.name.toLowerCase() == levelName.toLowerCase(),
+      orElse: () => LogLevel.warning,
+    );
+    DebugLogger.instance.setLevel(level);
+    DebugLogger.instance.setStructured(true);
+    
+    // Rate limiting / queue / timeouts
+    final security = (config['security'] as Map<String, dynamic>?) ?? const {};
+    final rateEnabled = (security['rate_limiting'] as bool?) ?? false;
+    final maxPerMinute = (security['max_requests_per_minute'] as int?) ?? 0;
+    _rateLimiter = rateEnabled && maxPerMinute > 0 ? SimpleRateLimiter(maxPerMinute) : null;
+
+    final queueCfg = (config['queue'] as Map<String, dynamic>?) ?? const {};
+    _maxPendingRequests = (queueCfg['max_pending'] as int?) ?? _maxPendingRequests;
+
+    final timeouts = (config['timeouts'] as Map<String, dynamic>?) ?? const {};
+    final translateMs = (timeouts['translate_ms'] as int?) ?? (config['maxProcessingTime'] as int?);
+    _requestTimeout = translateMs != null && translateMs > 0 ? Duration(milliseconds: translateMs) : null;
   }
   
   /// Обновить статистику переводов
@@ -387,6 +534,27 @@ _dataPath = customDatabasePath ?? '${Directory.current.uri.toFilePath()}translat
     _translationsCount++;
     _lastTranslationTime = DateTime.now();
     _totalProcessingTime += processingTime;
+  }
+  
+  /// Метрики и состояние (расширенный снимок)
+  Map<String, dynamic> getMetrics() {
+    return {
+      'engine': statistics,
+      'cache': getCacheInfo(),
+      'queue': {
+        'pending': _pendingRequests,
+        'max_pending': _maxPendingRequests,
+      },
+      'timeouts': {
+        'translate_ms': _requestTimeout?.inMilliseconds ?? 0,
+      },
+      'logging': {
+        'enabled': DebugLogger.instance.enabled,
+        'level': DebugLogger.instance.level.name,
+        'structured': DebugLogger.instance.structured,
+      },
+'metrics': MetricsRegistry.instance.snapshot(),
+    };
   }
 }
 

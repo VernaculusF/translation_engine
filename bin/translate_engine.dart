@@ -5,6 +5,12 @@ import 'commands/db_command.dart';
 import 'commands/import_command.dart';
 import 'commands/export_command.dart';
 import 'commands/validate_command.dart';
+import 'commands/metrics_command.dart';
+import 'commands/config_command.dart';
+import 'commands/logs_command.dart';
+import 'commands/cache_command.dart';
+import 'commands/queue_command.dart';
+import 'commands/engine_command.dart';
 import 'commands/base_command.dart';
 
 void printUsage() {
@@ -19,6 +25,12 @@ void printUsage() {
   print('  import     Import dictionary data from files');
   print('  export     Export data to files');
   print('  validate   Validate data files');
+  print('  metrics    Show engine metrics');
+  print('  config     Show/apply engine configuration');
+  print('  logs       Configure logging (level/enable/disable)');
+  print('  cache      Cache stats/clear');
+  print('  queue      Queue stats');
+  print('  engine     Engine maintenance (reset)');
   print('  help       Show this help message');
   print('');
   print('Use "dart run bin/translate_engine.dart <command> --help" for command-specific help.');
@@ -53,6 +65,24 @@ Future<int> main(List<String> args) async {
       break;
     case 'validate':
       commandInstance = ValidateCommand();
+      break;
+    case 'metrics':
+      commandInstance = MetricsCommand();
+      break;
+    case 'config':
+      commandInstance = ConfigCommand();
+      break;
+    case 'logs':
+      commandInstance = LogsCommand();
+      break;
+    case 'cache':
+      commandInstance = CacheCommand();
+      break;
+    case 'queue':
+      commandInstance = QueueCommand();
+      break;
+    case 'engine':
+      commandInstance = EngineCommand();
       break;
     case 'help':
       printUsage();

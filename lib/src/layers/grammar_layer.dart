@@ -220,7 +220,7 @@ class GrammarLayer extends BaseTranslationLayer {
       );
       
     } catch (e, stackTrace) {
-      _logger.error('$name: Grammar processing failed', e, stackTrace);
+      _logger.error('$name: Grammar processing failed', error: e, stackTrace: stackTrace);
       return _createResult(
         text, 
         false, 
@@ -430,47 +430,15 @@ class GrammarLayer extends BaseTranslationLayer {
   /// Provides default grammar rules for common language pairs
   static List<GrammarRule> _getDefaultGrammarRules() {
     return [
-      // English to Spanish rules
-      GrammarRule(
-        ruleId: 'en_es_adjective_agreement',
-        sourceLanguage: 'en',
-        targetLanguage: 'es',
-        description: 'Adjective gender agreement in Spanish',
-        pattern: RegExp(r'\b(un|una)\s+(\w+o)\b'),
-        replacement: r'\1 \2',
-        priority: 3,
-      ),
-      
-      // English to French rules
-      GrammarRule(
-        ruleId: 'en_fr_article_agreement',
-        sourceLanguage: 'en',
-        targetLanguage: 'fr',
-        description: 'Article gender agreement in French',
-        pattern: RegExp(r'\ble\s+(\w+e)\b'),
-        replacement: r'la \1',
-        priority: 3,
-      ),
-      
-      // General rules
+      // Safe general cleanup only; language-specific rules must come from repository files
       GrammarRule(
         ruleId: 'double_spaces',
         sourceLanguage: 'any',
         targetLanguage: 'any',
-        description: 'Remove double spaces',
+        description: 'Remove double or more spaces',
         pattern: RegExp(r'\s{2,}'),
         replacement: ' ',
         priority: 1,
-      ),
-      
-      GrammarRule(
-        ruleId: 'verb_to_be_present',
-        sourceLanguage: 'en',
-        targetLanguage: 'es',
-        description: 'Conjugate "to be" in present tense',
-        pattern: RegExp(r'\b(I|You|He|She|It|We|They)\s+am\b|\b(I|You|He|She|It|We|They)\s+is\b|\b(I|You|He|She|It|We|They)\s+are\b'),
-        replacement: r'\1 soy|\2 eres|\3 es',
-        priority: 4,
       ),
     ];
   }

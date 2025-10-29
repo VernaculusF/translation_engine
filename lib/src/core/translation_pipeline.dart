@@ -17,6 +17,9 @@ import 'layer_adapters.dart';
 import '../data/grammar_rules_repository.dart';
 import '../data/word_order_rules_repository.dart';
 import '../data/post_processing_rules_repository.dart';
+import '../utils/debug_logger.dart';
+import '../utils/tracing.dart';
+import '../utils/metrics.dart';
 
 /// Состояния pipeline обработки
 enum PipelineState {
@@ -183,6 +186,8 @@ class TranslationPipeline {
     final stopwatch = Stopwatch()..start();
     final List<LayerDebugInfo> layerResults = [];
     String currentText = text;
+    final traceId = context.getMetadata<String>('trace_id') ?? newTraceId();
+    final trace = TraceContext(traceId);
     
     try {
       _setState(PipelineState.processing);
@@ -205,16 +210,32 @@ class TranslationPipeline {
         final layerStopwatch = Stopwatch()..start();
         
         try {
+          final span = Span(trace, 'layer.${layer.layerType.name}.${layer.name}');
+          DebugLogger.instance.debug('layer.start', fields: {
+            'trace_id': traceId,
+            'span_id': span.spanId,
+            'layer': layer.layerType.name,
+            'name': layer.name,
+          });
           final result = await layer.process(currentText, context);
           currentText = result.processedText;
           // Обновляем контекст, чтобы последующие слои видели актуальный текст
           context.translatedText = currentText;
           
           layerStopwatch.stop();
+          final dur = span.end();
           layerResults.add(result.debugInfo);
           
           // Обновление статистики слоя
           _updateLayerStatistics(layer.layerType, layerStopwatch.elapsed);
+          MetricsRegistry.instance.timer('layer.${layer.layerType.name}').observe(dur);
+          DebugLogger.instance.debug('layer.end', fields: {
+            'trace_id': traceId,
+            'layer': layer.layerType.name,
+            'name': layer.name,
+            'processing_time_ms': layerStopwatch.elapsedMilliseconds,
+            'modified': result.debugInfo.wasModified,
+          });
           
         } catch (e) {
           layerStopwatch.stop();
@@ -225,6 +246,12 @@ class TranslationPipeline {
             errorMessage: e.toString(),
             processingTimeMs: layerStopwatch.elapsedMilliseconds,
           ));
+          DebugLogger.instance.warning('layer.error', fields: {
+            'trace_id': traceId,
+            'layer': layer.layerType.name,
+            'name': layer.name,
+            'error': e.toString(),
+          });
           
           // Продолжаем обработку следующими слоями
         }
@@ -259,6 +286,10 @@ class TranslationPipeline {
         processingTimeMs: stopwatch.elapsedMilliseconds,
         layerResults: layerResults,
       );
+      DebugLogger.instance.info('pipeline.end', fields: {
+        'trace_id': traceId,
+        'processing_time_ms': stopwatch.elapsedMilliseconds,
+      });
       _setState(PipelineState.completed);
       _setState(PipelineState.idle);
       return res;
@@ -267,6 +298,10 @@ class TranslationPipeline {
       stopwatch.stop();
       _lastError = e is Exception ? e : Exception('Pipeline processing failed: $e');
       _setState(PipelineState.error);
+      DebugLogger.instance.error('pipeline.error', error: e, fields: {
+        'trace_id': traceId,
+        'processing_time_ms': stopwatch.elapsedMilliseconds,
+      });
       
       final res = TranslationResult.error(
         originalText: text,
@@ -308,23 +343,33 @@ class TranslationPipeline {
   
   /// Инициализация базовых слоев (пока пустая реализация)
   void _initializeDefaultLayers() {
-    // Register adapters for all base layers in correct order
-    try {
-      // Pre-processing
-      registerLayer(LayerAdaptersFactory.preProcessing());
+    // Register adapters for all base layers in correct order, logging any failures
+    final errors = <String>[];
 
-      // Phrase lookup depends on PhraseRepository
-      registerLayer(LayerAdaptersFactory.phraseLookup(repo: phraseRepository));
+    void safeRegister(String name, void Function() action) {
+      try {
+        action();
+      } catch (e) {
+        errors.add('$name: $e');
+        DebugLogger.instance.warning('pipeline.layer_init_failed', fields: {
+          'layer': name,
+          'error': e.toString(),
+        });
+      }
+    }
 
-      // Dictionary lookup depends on DictionaryRepository
-      registerLayer(LayerAdaptersFactory.dictionary(repo: dictionaryRepository));
+    safeRegister('preProcessing', () => registerLayer(LayerAdaptersFactory.preProcessing()));
+    safeRegister('phraseLookup', () => registerLayer(LayerAdaptersFactory.phraseLookup(repo: phraseRepository)));
+    safeRegister('dictionary', () => registerLayer(LayerAdaptersFactory.dictionary(repo: dictionaryRepository)));
+    safeRegister('grammar', () => registerLayer(LayerAdaptersFactory.grammar(repo: grammarRulesRepository)));
+    safeRegister('wordOrder', () => registerLayer(LayerAdaptersFactory.wordOrder(repo: wordOrderRulesRepository)));
+    safeRegister('postProcessing', () => registerLayer(LayerAdaptersFactory.postProcessing(repo: postProcessingRulesRepository)));
 
-      // Grammar, Word order, Post-processing
-      registerLayer(LayerAdaptersFactory.grammar(repo: grammarRulesRepository));
-      registerLayer(LayerAdaptersFactory.wordOrder(repo: wordOrderRulesRepository));
-      registerLayer(LayerAdaptersFactory.postProcessing(repo: postProcessingRulesRepository));
-    } catch (_) {
-      // In case of any initialization issues, leave pipeline without default layers
+    if (_layers.isEmpty) {
+      // If no layers registered at all, this is a hard error
+      final message = 'No default layers registered. Errors: ${errors.join('; ')}';
+      DebugLogger.instance.error('pipeline.init_failed', error: message);
+      throw StateError(message);
     }
   }
   

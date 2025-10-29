@@ -71,7 +71,7 @@ class PhraseImporter {
     }
 
     // Detect header
-    final header = _splitLine(lines.first, delimiter);
+    final header = _parseCsvLine(lines.first, delimiter);
     final hasHeader = _looksLikeHeader(header);
     int total = 0;
     int ok = 0;
@@ -86,7 +86,7 @@ class PhraseImporter {
     for (int i = hasHeader ? 1 : 0; i < lines.length; i++) {
       final rowLine = lines[i].trim();
       if (rowLine.isEmpty) continue;
-      final cols = _splitLine(rowLine, delimiter);
+      final cols = _parseCsvLine(rowLine, delimiter);
       total++;
       try {
         final sourcePhrase = _getCol(cols, idx.sourceIdx) ?? cols[0];
@@ -218,10 +218,29 @@ class PhraseImporter {
     return ImportReport(total: total, insertedOrUpdated: ok, skipped: skipped, errors: errors);
   }
 
-  List<String> _splitLine(String line, String delimiter) {
-    if (delimiter == '\t') return line.split('\t');
-    // naive split; for advanced CSV with quotes consider using a CSV parser
-    return line.split(delimiter);
+  List<String> _parseCsvLine(String line, String delimiter) {
+    final List<String> fields = [];
+    final StringBuffer current = StringBuffer();
+    final d = delimiter == '\t' ? '\t' : (delimiter.isEmpty ? ',' : delimiter);
+    bool inQuotes = false;
+    for (int i = 0; i < line.length; i++) {
+      final ch = line[i];
+      if (ch == '"') {
+        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+          current.write('"');
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (!inQuotes && ch == d) {
+        fields.add(current.toString().trim());
+        current.clear();
+      } else {
+        current.write(ch);
+      }
+    }
+    fields.add(current.toString().trim());
+    return fields;
   }
 
   bool _looksLikeHeader(List<String> header) {

@@ -130,7 +130,10 @@ class SentenceStructure {
   });
 
   SentenceComponent? getComponent(ComponentType type) {
-    return components.where((c) => c.type == type).firstOrNull;
+    for (final c in components) {
+      if (c.type == type) return c;
+    }
+    return null;
   }
 
   List<SentenceComponent> getComponents(ComponentType type) {
@@ -303,7 +306,7 @@ class WordOrderLayer extends BaseTranslationLayer {
       );
       
     } catch (e, stackTrace) {
-      _logger.error('$name: Word order processing failed', e, stackTrace);
+      _logger.error('$name: Word order processing failed', error: e, stackTrace: stackTrace);
       final debugInfo = LayerDebugInfo.error(
         layerName: name,
         processingTimeMs: stopwatch.elapsedMilliseconds,
@@ -614,47 +617,8 @@ class WordOrderLayer extends BaseTranslationLayer {
 
   /// Provides default word order rules for common language pairs
   static List<WordOrderRule> _getDefaultOrderRules() {
-    return [
-      // English to Japanese: Subject-Object-Verb reordering
-      WordOrderRule(
-        ruleId: 'en_ja_sov_basic',
-        sourceLanguage: 'en',
-        targetLanguage: 'ja',
-        description: 'Reorder English SVO to Japanese SOV',
-        sourceOrder: WordOrderType.svo,
-        targetOrder: WordOrderType.sov,
-        pattern: RegExp(r'(\w+)\s+(\w+)\s+(\w+)'),
-        reorderTemplate: r'\1 \3 \2',
-        priority: 5,
-        conditions: ['word_count_gt:2'],
-      ),
-      
-      // French adjective placement
-      WordOrderRule(
-        ruleId: 'en_fr_adjective_placement',
-        sourceLanguage: 'en',
-        targetLanguage: 'fr',
-        description: 'Move adjectives after nouns in French',
-        sourceOrder: WordOrderType.svo,
-        targetOrder: WordOrderType.svo,
-        pattern: RegExp(r'(\w+)\s+(\w+)\s+(noun)'),
-        reorderTemplate: r'\3 \1',
-        priority: 3,
-      ),
-      
-      // Spanish question inversion
-      WordOrderRule(
-        ruleId: 'en_es_question_inversion',
-        sourceLanguage: 'en',
-        targetLanguage: 'es',
-        description: 'Invert subject-verb in Spanish questions',
-        sourceOrder: WordOrderType.svo,
-        targetOrder: WordOrderType.vso,
-        pattern: RegExp(r'(do|does|did)\s+(\w+)\s+(\w+)'),
-        reorderTemplate: r'\3 \2',
-        priority: 4,
-      ),
-    ];
+    // Disable risky default reorderings; rely on external rule files
+    return [];
   }
 
   /// Provides default language word orders
