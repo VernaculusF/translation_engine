@@ -29,6 +29,7 @@ print(metrics);
 ## 5. CSV/JSON/JSONL импорт
 - Импорт CSV с кавычками/экранированием: корректный парсинг
 - Импорт JSON/JSONL: отчёт об ошибках, транзакционная запись (tmp+rename)
+- Нормализация Unicode (NFC): после импорта поиск по словам/фразам с диакритикой отрабатывает корректно
 
 Программно
 ```dart path=null start=null
@@ -41,6 +42,7 @@ print(report.toMap());
 ## 6. Метрики и наблюдаемость
 - engine.getMetrics() содержит: engine, cache, queue, timeouts, logging, metrics
 - hasDataAccess отражён в statistics/data_access_available
+- Версионирование: после перезаписи данных в `<lang>/version.json` указана актуальная версия
 - Логи по слоям/пайплайну появляются при debug=true
 
 ## 7. DbCommand (по желанию на локалке)
@@ -48,13 +50,15 @@ print(report.toMap());
 - --sha256: несоответствие — отказ; корректный префикс — успех
 - retry/backoff: временные 5xx не ломают процесс
 
-## 8. Очередь/таймаут/уверенность
+## 8. Очередь/таймаут/уверенность/деградация
 - Вызвать N параллельных translate: pending растёт, при переполнении — drop, лог `queue.drop`
 - Длинная обработка — timeout, лог `translate.timeout`
 - Проверить confidence: при большем числе модифицированных слоёв и cache hits метрика растёт по новой формуле
+- Degrade-mode: задать config.degrade = {enabled:true, allowed_layers:['phraseLookup','dictionary']}; убедиться, что в логах есть `pipeline.degrade`, а результат формируется только слоями фраз/словаря
 
 ## 9. Сброс и завершение
 - engine.reset() — снимает ошибку, state=ready
+- Использовать TranslationEngine.create(reset:true) для безопасного пересоздания инстанса без гонок
 
 ## 10. CLI (локально)
 - metrics/config/logs/cache/queue/engine — выполняются, формат JSON корректен
