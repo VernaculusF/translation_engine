@@ -15,6 +15,7 @@ import '../data/phrase_repository.dart';
 import '../models/layer_debug_info.dart';
 import 'translation_context.dart';
 import 'translation_pipeline.dart';
+import 'layer_type.dart';
 
 /// Generic adapter to bridge BaseTranslationLayer to TranslationLayer
 class LayerAdapter implements TranslationLayer {

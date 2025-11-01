@@ -15,8 +15,11 @@ class TextToken {
   /// Оригинальный текст токена
   final String original;
   
-  /// Нормализованный текст токена
+  /// Нормализованный текст токена (lowercase, без диакритики)
   final String normalized;
+  
+  /// Перевод токена (если был переведён)
+  final String? translation;
   
   /// Позиция в исходном тексте
   final int startPosition;
@@ -34,6 +37,7 @@ class TextToken {
   const TextToken({
     required this.original,
     required this.normalized,
+    this.translation,
     required this.startPosition,
     required this.endPosition,
     required this.type,
@@ -45,10 +49,36 @@ class TextToken {
   int get length => endPosition - startPosition;
   
   /// Токен был изменен при нормализации
-  bool get wasNormalized => original != normalized;
+  bool get wasNormalized => original.toLowerCase() != normalized;
+  
+  /// Токен был переведён
+  bool get isTranslated => translation != null;
+  
+  /// Получить финальный текст (перевод или оригинал)
+  String get finalText => translation ?? original;
   
   @override
-  String toString() => 'Token("$original"${wasNormalized ? ' -> "$normalized"' : ''}, $type)';
+  String toString() {
+    final parts = ['Token("$original"'];
+    if (wasNormalized) parts.add(' norm:"$normalized"');
+    if (isTranslated) parts.add(' trans:"$translation"');
+    parts.add(', $type)');
+    return parts.join();
+  }
+  
+  /// Создать копию с переводом
+  TextToken withTranslation(String translatedText, {double? newConfidence}) {
+    return TextToken(
+      original: original,
+      normalized: normalized,
+      translation: translatedText,
+      startPosition: startPosition,
+      endPosition: endPosition,
+      type: type,
+      confidence: newConfidence ?? confidence,
+      metadata: {...metadata, 'translated': true},
+    );
+  }
 }
 
 /// Типы токенов

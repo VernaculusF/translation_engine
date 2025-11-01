@@ -1,6 +1,7 @@
 import 'dart:convert';
 import '../utils/exceptions.dart';
 import '../utils/cache_manager.dart';
+import '../utils/memory_manager.dart';
 import '../storage/file_storage.dart';
 
 /// Модель фразы для перевода
@@ -130,19 +131,54 @@ class PhraseEntry {
 /// Репозиторий для работы с фразами (файловое хранилище JSONL)
 class PhraseRepository {
   static const String _cachePrefix = 'phrase:';
+  static const String _repoName = 'phrase';
 
   final CacheManager cacheManager;
   final FileStorageService storage;
+  final MemoryManager? memoryManager;
 
   PhraseRepository({
     required String dataDirPath,
     required this.cacheManager,
-  }) : storage = FileStorageService(rootDir: dataDirPath);
+    this.memoryManager,
+  }) : storage = FileStorageService(rootDir: dataDirPath) {
+    // Регистрируем репозиторий в MemoryManager
+    memoryManager?.registerRepository(
+      _repoName,
+      _unloadLanguagePair,
+      _estimateLanguagePairSize,
+    );
+  }
 
   final Map<String, _PhraseLangCache> _langCaches = {};
+  
   _PhraseLangCache _ensureLoaded(String languagePair) {
     final lang = languagePair.toLowerCase();
+    
+    // Уведомить MemoryManager о доступе
+    memoryManager?.touchLanguagePair(_repoName, lang);
+    
     return _langCaches.putIfAbsent(lang, () => _PhraseLangCache(lang, storage));
+  }
+  
+  /// Callback для выгрузки языковой пары (используется MemoryManager)
+  Future<void> _unloadLanguagePair(String languagePair) async {
+    final lang = languagePair.toLowerCase();
+    _langCaches.remove(lang);
+  }
+  
+  /// Оценка размера языковой пары в байтах (используется MemoryManager)
+  int _estimateLanguagePairSize(String languagePair) {
+    final lang = languagePair.toLowerCase();
+    final cache = _langCaches[lang];
+    if (cache == null) return 0;
+    
+    // Приблизительная оценка: количество фраз * средний размер
+    // Фразы занимают больше памяти: ~500 байт на фразу + индексы
+    const avgPhraseSize = 500;
+    // Учитываем два индекса: bySource и bySourceLoose
+    final indexOverhead = cache.bySourceLoose.length * 50;
+    return cache.bySource.length * avgPhraseSize + indexOverhead;
   }
   
   String generateCacheKey(Map<String, dynamic> params) {

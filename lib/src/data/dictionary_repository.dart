@@ -1,6 +1,7 @@
 import 'dart:convert';
 import '../utils/exceptions.dart';
 import '../utils/cache_manager.dart';
+import '../utils/memory_manager.dart';
 import '../storage/file_storage.dart';
 
 /// Модель записи словаря
@@ -103,21 +104,53 @@ class DictionaryEntry {
 /// Репозиторий для работы со словарями (файловое хранилище JSONL)
 class DictionaryRepository {
   static const String _cachePrefix = 'dict:';
+  static const String _repoName = 'dictionary';
 
   final CacheManager cacheManager;
   final FileStorageService storage;
+  final MemoryManager? memoryManager;
 
   DictionaryRepository({
     required String dataDirPath,
     required this.cacheManager,
-  }) : storage = FileStorageService(rootDir: dataDirPath);
+    this.memoryManager,
+  }) : storage = FileStorageService(rootDir: dataDirPath) {
+    // Регистрируем репозиторий в MemoryManager
+    memoryManager?.registerRepository(
+      _repoName,
+      _unloadLanguagePair,
+      _estimateLanguagePairSize,
+    );
+  }
 
   // В памяти поддерживаем индекс по языковой паре
   final Map<String, _DictLangCache> _langCaches = {};
 
   _DictLangCache _ensureLoaded(String languagePair) {
     final lang = languagePair.toLowerCase();
+    
+    // Уведомить MemoryManager о доступе
+    memoryManager?.touchLanguagePair(_repoName, lang);
+    
     return _langCaches.putIfAbsent(lang, () => _DictLangCache(lang, storage));
+  }
+  
+  /// Callback для выгрузки языковой пары (используется MemoryManager)
+  Future<void> _unloadLanguagePair(String languagePair) async {
+    final lang = languagePair.toLowerCase();
+    _langCaches.remove(lang);
+  }
+  
+  /// Оценка размера языковой пары в байтах (используется MemoryManager)
+  int _estimateLanguagePairSize(String languagePair) {
+    final lang = languagePair.toLowerCase();
+    final cache = _langCaches[lang];
+    if (cache == null) return 0;
+    
+    // Приблизительная оценка: количество записей * средний размер записи
+    // Средний размер: ~200 байт на запись (sourceWord + targetWord + metadata)
+    const avgEntrySize = 200;
+    return cache.bySource.length * avgEntrySize;
   }
 
   String generateCacheKey(Map<String, dynamic> params) {

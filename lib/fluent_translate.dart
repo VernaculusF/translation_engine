@@ -9,4 +9,6 @@ export 'src/models/translation_result.dart';
 export 'src/models/layer_debug_info.dart';
 
 export 'src/utils/exceptions.dart';
+export 'src/utils/result.dart';
 export 'src/utils/cache_manager.dart';
+export 'src/utils/memory_manager.dart';

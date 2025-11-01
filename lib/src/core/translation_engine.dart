@@ -12,6 +12,7 @@ import '../data/dictionary_repository.dart';
 import '../data/phrase_repository.dart';
 import '../data/user_data_repository.dart';
 import '../utils/cache_manager.dart';
+import '../utils/memory_manager.dart';
 import '../models/translation_result.dart';
 import 'translation_pipeline.dart';
 import 'translation_context.dart';
@@ -22,6 +23,7 @@ import '../utils/debug_logger.dart';
 import '../utils/metrics.dart';
 import '../utils/rate_limiter.dart';
 import '../utils/tracing.dart';
+import 'layer_type.dart';
 import 'package:path/path.dart' as p;
 
 /// Состояния жизненного цикла TranslationEngine
@@ -71,6 +73,7 @@ class TranslationEngine {
   
   // Core components
   late CacheManager _cacheManager;
+  MemoryManager? _memoryManager; // опционально
   late DictionaryRepository _dictionaryRepository;
   late PhraseRepository _phraseRepository;
   late UserDataRepository _userDataRepository;
@@ -104,6 +107,10 @@ class TranslationEngine {
   int _maxPendingRequests = 0; // 0 = unlimited
   Duration? _requestTimeout; // null = no timeout
 
+  // Degrade mode
+  bool _degradeEnabled = false;
+  List<String> _degradeAllowedLayers = const []; // e.g., ['phraseLookup','dictionary']
+
   // Config
 
   TranslationEngine._() : _serializeChain = Future.value();
@@ -113,10 +120,21 @@ class TranslationEngine {
     return _instance ??= TranslationEngine._();
   }
   
-  /// Получить singleton instance с возможностью сброса для тестов
+  /// Получить singleton instance с возможностью сброса для тестов (синхронный вариант)
   factory TranslationEngine.instance({bool reset = false}) {
     if (reset) {
+      // Внимание: синхронное освобождение ресурсов не гарантируется.
+      // Используйте TranslationEngine.create(reset: true) для корректного await-диспоза.
       _instance?._dispose();
+      _instance = null;
+    }
+    return TranslationEngine();
+  }
+
+  /// Рекомендуемый способ создать/получить instance с корректным await-диспозом при reset
+  static Future<TranslationEngine> create({bool reset = false}) async {
+    if (reset && _instance != null) {
+      await _instance!._dispose();
       _instance = null;
     }
     return TranslationEngine();
@@ -175,15 +193,31 @@ class TranslationEngine {
       // Инициализация Data Layer компонентов (файловое хранилище)
       _dataPath = await _prepareDataPath(customDatabasePath);
       _cacheManager = CacheManager();
+      
+      // Инициализация MemoryManager (опционально)
+      final memoryCfg = config?['memory'] as Map<String, dynamic>?;
+      final memoryEnabled = (memoryCfg?['enabled'] as bool?) ?? true; // по умолчанию включено
+      if (memoryEnabled) {
+        final maxMemoryMb = (memoryCfg?['max_memory_mb'] as int?) ?? 256;
+        final maxPairs = (memoryCfg?['max_language_pairs'] as int?) ?? 50;
+        final evictionThreshold = (memoryCfg?['eviction_threshold'] as double?) ?? 0.8;
+        _memoryManager = MemoryManager(
+          maxMemoryBytes: maxMemoryMb * 1024 * 1024,
+          maxLanguagePairs: maxPairs,
+          evictionThreshold: evictionThreshold,
+        );
+      }
 
       // Инициализация репозиториев (файловые JSONL)
       _dictionaryRepository = DictionaryRepository(
         dataDirPath: _dataPath,
         cacheManager: _cacheManager,
+        memoryManager: _memoryManager,
       );
       _phraseRepository = PhraseRepository(
         dataDirPath: _dataPath,
         cacheManager: _cacheManager,
+        memoryManager: _memoryManager,
       );
       _userDataRepository = UserDataRepository(
         dataDirPath: _dataPath,
@@ -309,6 +343,10 @@ class TranslationEngine {
           );
           // propagate trace id
           translationContext.setMetadata('trace_id', traceId);
+          // propagate degrade profile
+          if (_degradeEnabled && _degradeAllowedLayers.isNotEmpty) {
+            translationContext.setMetadata('degrade_allowed', List<String>.from(_degradeAllowedLayers));
+          }
           
           // Выполнение перевода через pipeline
           final result = await _pipeline.process(text, translationContext);
@@ -445,6 +483,9 @@ class TranslationEngine {
     _setState(EngineState.disposing);
     
     try {
+      // Очистка MemoryManager
+      _memoryManager?.dispose();
+      
       // Закрытие stream controllers
       await _stateController.close();
       await _errorController.close();
@@ -527,6 +568,27 @@ class TranslationEngine {
     final timeouts = (config['timeouts'] as Map<String, dynamic>?) ?? const {};
     final translateMs = (timeouts['translate_ms'] as int?) ?? (config['maxProcessingTime'] as int?);
     _requestTimeout = translateMs != null && translateMs > 0 ? Duration(milliseconds: translateMs) : null;
+
+    // Degrade mode
+    final degrade = (config['degrade'] as Map<String, dynamic>?) ?? const {};
+    _degradeEnabled = (degrade['enabled'] as bool?) ?? false;
+    final allowed = degrade['allowed_layers'];
+    if (allowed is List) {
+      _degradeAllowedLayers = allowed.map((e) => e.toString()).toList();
+    }
+    
+    // Health monitoring (circuit breaker для graceful degradation)
+    final healthCfg = (config['health_monitoring'] as Map<String, dynamic>?) ?? const {};
+    final healthEnabled = (healthCfg['enabled'] as bool?) ?? false;
+    if (healthEnabled) {
+      _pipeline.enableHealthMonitoring(
+        errorThreshold: (healthCfg['error_threshold'] as double?) ?? 0.5,
+        minRequests: (healthCfg['min_requests'] as int?) ?? 10,
+        resetTimeoutSeconds: (healthCfg['reset_timeout_seconds'] as int?) ?? 60,
+        successThreshold: (healthCfg['success_threshold'] as int?) ?? 3,
+        windowSeconds: (healthCfg['window_seconds'] as int?) ?? 300,
+      );
+    }
   }
   
   /// Обновить статистику переводов
@@ -538,8 +600,9 @@ class TranslationEngine {
   
   /// Метрики и состояние (расширенный снимок)
   Map<String, dynamic> getMetrics() {
-    return {
+    final metrics = {
       'engine': statistics,
+      'pipeline': _pipeline.statistics,
       'cache': getCacheInfo(),
       'queue': {
         'pending': _pendingRequests,
@@ -553,8 +616,29 @@ class TranslationEngine {
         'level': DebugLogger.instance.level.name,
         'structured': DebugLogger.instance.structured,
       },
-'metrics': MetricsRegistry.instance.snapshot(),
+      'metrics': MetricsRegistry.instance.snapshot(),
     };
+    
+    // Добавить метрики памяти если MemoryManager включен
+    if (_memoryManager != null) {
+      metrics['memory'] = _memoryManager!.getMemoryReport();
+    }
+    
+    return metrics;
+  }
+  
+  /// Получить отчёт о здоровье слоёв (graceful degradation)
+  Map<String, dynamic>? getLayerHealth() {
+    return _pipeline.healthMonitor?.getHealthReport();
+  }
+  
+  /// Принудительно восстановить слой после circuit breaker
+  void forceRestoreLayer(String layerTypeName) {
+    final layerType = LayerType.values.firstWhere(
+      (t) => t.name == layerTypeName,
+      orElse: () => throw ArgumentError('Unknown layer type: $layerTypeName'),
+    );
+    _pipeline.forceRestoreLayer(layerType);
   }
 }
 

@@ -20,6 +20,8 @@ import '../data/post_processing_rules_repository.dart';
 import '../utils/debug_logger.dart';
 import '../utils/tracing.dart';
 import '../utils/metrics.dart';
+import '../utils/layer_health_monitor.dart';
+import 'layer_type.dart';
 
 /// Состояния pipeline обработки
 enum PipelineState {
@@ -34,16 +36,6 @@ enum PipelineState {
   
   /// Обработка завершена
   completed,
-}
-
-/// Типы слоев в pipeline
-enum LayerType {
-  preProcessing,
-  phraseLookup,
-  dictionary,
-  grammar,
-  wordOrder,
-  postProcessing,
 }
 
 /// Абстрактный интерфейс слоя обработки
@@ -107,6 +99,9 @@ class TranslationPipeline {
   // Error handling
   Exception? _lastError;
   
+  // Health monitoring for graceful degradation
+  LayerHealthMonitor? _healthMonitor;
+  
   TranslationPipeline({
     required this.dictionaryRepository,
     required this.phraseRepository,
@@ -149,33 +144,42 @@ class TranslationPipeline {
   }
   
   /// Статистика pipeline
-  Map<String, dynamic> get statistics => {
-    'processed_texts': _processedTexts,
-    'total_processing_time_ms': _totalProcessingTime.inMilliseconds,
-    'average_processing_time_ms': _processedTexts > 0
-        ? _totalProcessingTime.inMilliseconds / _processedTexts
-        : 0,
-    'layers_count': _layers.length,
-    'data_access_available': hasDataAccess,
-    'repositories': {
-      'dictionary_ready': true, // Required in constructor
-      'phrase_ready': true, // Required in constructor
-      'user_data_ready': true, // Required in constructor
-      'cache_ready': true, // Required in constructor
-    },
-    'layer_statistics': _layerProcessingTimes.map(
-      (type, time) => MapEntry(
-        type.toString(),
-        {
-          'executions': _layerExecutions[type] ?? 0,
-          'total_time_ms': time.inMilliseconds,
-          'average_time_ms': (_layerExecutions[type] ?? 0) > 0
-              ? time.inMilliseconds / _layerExecutions[type]!
-              : 0,
-        },
+  Map<String, dynamic> get statistics {
+    final stats = {
+      'processed_texts': _processedTexts,
+      'total_processing_time_ms': _totalProcessingTime.inMilliseconds,
+      'average_processing_time_ms': _processedTexts > 0
+          ? _totalProcessingTime.inMilliseconds / _processedTexts
+          : 0,
+      'layers_count': _layers.length,
+      'data_access_available': hasDataAccess,
+      'repositories': {
+        'dictionary_ready': true, // Required in constructor
+        'phrase_ready': true, // Required in constructor
+        'user_data_ready': true, // Required in constructor
+        'cache_ready': true, // Required in constructor
+      },
+      'layer_statistics': _layerProcessingTimes.map(
+        (type, time) => MapEntry(
+          type.toString(),
+          {
+            'executions': _layerExecutions[type] ?? 0,
+            'total_time_ms': time.inMilliseconds,
+            'average_time_ms': (_layerExecutions[type] ?? 0) > 0
+                ? time.inMilliseconds / _layerExecutions[type]!
+                : 0,
+          },
+        ),
       ),
-    ),
-  };
+    };
+    
+    // Добавляем информацию о здоровье слоёв, если монитор включён
+    if (_healthMonitor != null) {
+      stats['health'] = _healthMonitor!.getHealthReport();
+    }
+    
+    return stats;
+  }
   
   /// Обработать текст через pipeline
   /// 
@@ -201,11 +205,44 @@ class TranslationPipeline {
       _setState(PipelineState.processing);
       
       // Обработка слоев по приоритету, проверяя возможность на каждом шаге
-      final layersToRun = List<TranslationLayer>.from(_layers);
+      var layersToRun = List<TranslationLayer>.from(_layers);
+
+      // Применение degrade-профиля (если задан)
+      final degradeAllowed = context.getMetadata<List>('degrade_allowed');
+      if (degradeAllowed is List && degradeAllowed.isNotEmpty) {
+        final allowedSet = degradeAllowed.map((e) => e.toString()).toSet();
+        final before = layersToRun.length;
+        layersToRun = layersToRun
+            .where((l) => allowedSet.contains(l.layerType.name))
+            .toList();
+        DebugLogger.instance.info('pipeline.degrade', fields: {
+          'trace_id': trace.traceId,
+          'allowed_layers': allowedSet.toList(),
+          'filtered': before - layersToRun.length,
+        });
+      }
+
       bool anyLayerProcessed = false;
 
       for (final layer in layersToRun) {
         if (!layer.isEnabled) {
+          continue;
+        }
+        
+        // Проверка circuit breaker: отключен ли слой из-за ошибок
+        if (_healthMonitor != null && !_healthMonitor!.isLayerAvailable(layer.layerType)) {
+          DebugLogger.instance.warning('layer.circuit_open', fields: {
+            'trace_id': traceId,
+            'layer': layer.layerType.name,
+          });
+          layerResults.add(LayerDebugInfo(
+            layerName: layer.name,
+            wasModified: false,
+            itemsProcessed: 0,
+            cacheHits: 0,
+            processingTimeMs: 0,
+            errorMessage: 'Layer circuit breaker is OPEN',
+          ));
           continue;
         }
         
@@ -245,6 +282,9 @@ class TranslationPipeline {
             'modified': result.debugInfo.wasModified,
           });
           
+          // Записываем успешную обработку в health monitor
+          _healthMonitor?.recordSuccess(layer.layerType);
+          
         } catch (e) {
           layerStopwatch.stop();
           
@@ -260,6 +300,9 @@ class TranslationPipeline {
             'name': layer.name,
             'error': e.toString(),
           });
+          
+          // Записываем ошибку в health monitor
+          _healthMonitor?.recordError(layer.layerType, e);
           
           // Продолжаем обработку следующими слоями
         }
@@ -343,8 +386,47 @@ class TranslationPipeline {
     _layers.clear();
   }
   
+  /// Включить мониторинг здоровья слоёв (graceful degradation)
+  void enableHealthMonitoring({
+    double errorThreshold = 0.5,
+    int minRequests = 10,
+    int resetTimeoutSeconds = 60,
+    int successThreshold = 3,
+    int windowSeconds = 300,
+  }) {
+    _healthMonitor = LayerHealthMonitor(
+      errorThreshold: errorThreshold,
+      minRequests: minRequests,
+      resetTimeoutSeconds: resetTimeoutSeconds,
+      successThreshold: successThreshold,
+      windowSeconds: windowSeconds,
+    );
+    
+    DebugLogger.instance.info('pipeline.health_monitor_enabled', fields: {
+      'error_threshold': errorThreshold,
+      'min_requests': minRequests,
+      'reset_timeout_seconds': resetTimeoutSeconds,
+    });
+  }
+  
+  /// Отключить мониторинг здоровья слоёв
+  void disableHealthMonitoring() {
+    _healthMonitor?.dispose();
+    _healthMonitor = null;
+    DebugLogger.instance.info('pipeline.health_monitor_disabled');
+  }
+  
+  /// Получить health monitor (для расширенного управления)
+  LayerHealthMonitor? get healthMonitor => _healthMonitor;
+  
+  /// Принудительно восстановить слой (закрыть circuit breaker)
+  void forceRestoreLayer(LayerType layerType) {
+    _healthMonitor?.forceCloseCircuit(layerType);
+  }
+  
   /// Освободить ресурсы
   Future<void> dispose() async {
+    _healthMonitor?.dispose();
     await _stateController.close();
     _layers.clear();
   }

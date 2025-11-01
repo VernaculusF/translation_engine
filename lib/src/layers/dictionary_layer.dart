@@ -477,19 +477,7 @@ class DictionaryLayer extends BaseTranslationLayer {
   
   /// Создание токена с переводом
   TextToken _createTranslatedToken(TextToken originalToken, String translation, double confidence) {
-    return TextToken(
-      original: originalToken.original,
-      normalized: translation,
-      startPosition: originalToken.startPosition,
-      endPosition: originalToken.endPosition,
-      type: originalToken.type,
-      confidence: confidence,
-      metadata: {
-        ...originalToken.metadata,
-        'translated': true,
-        'translation_confidence': confidence,
-      },
-    );
+    return originalToken.withTranslation(translation, newConfidence: confidence);
   }
   
   /// Сборка текста из токенов (локальная токенизация)
@@ -498,11 +486,8 @@ class DictionaryLayer extends BaseTranslationLayer {
     final buffer = StringBuffer();
     for (int i = 0; i < tokens.length; i++) {
       final token = tokens[i];
-      if (token.type == TokenType.word && token.wasNormalized) {
-        buffer.write(token.normalized);
-      } else {
-        buffer.write(token.original);
-      }
+      // Используем перевод, если есть, иначе оригинал
+      buffer.write(token.finalText);
       if (i < tokens.length - 1) {
         final nextToken = tokens[i + 1];
         if (token.type == TokenType.word && nextToken.type == TokenType.word) {
@@ -525,9 +510,9 @@ class DictionaryLayer extends BaseTranslationLayer {
       if (t.startPosition > pos) {
         buf.write(original.substring(pos, t.startPosition));
       }
-      final isTranslated = t.metadata['translated'] == true || (t.type == TokenType.word && t.wasNormalized && t.original != t.normalized);
-      if (isTranslated && t.type == TokenType.word) {
-        buf.write(t.normalized);
+      // Используем перевод, если есть
+      if (t.isTranslated && t.type == TokenType.word) {
+        buf.write(t.translation!);
       } else {
         buf.write(original.substring(t.startPosition, t.endPosition));
       }

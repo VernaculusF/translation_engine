@@ -99,6 +99,15 @@ class PostProcessingLayer extends BaseTranslationLayer {
   final bool _enableQualityCheck;
 
   final PostProcessingRulesRepository? _rulesRepository;
+  
+  // Опции для отключения шагов
+  final bool enableSpacingFix;
+  final bool enableCapitalizationFix;
+  final bool enablePunctuationFix;
+  final bool enableLanguageFormatting;
+  final bool enableRulesApplication;
+  final bool enableFinalCleanup;
+  final bool addMissingPeriods; // Добавлять ли точки в конце предложений
 
   PostProcessingLayer({
     List<PostProcessingRule>? postProcessingRules,
@@ -106,6 +115,13 @@ class PostProcessingLayer extends BaseTranslationLayer {
     DebugLogger? logger,
     bool enableQualityCheck = true,
     PostProcessingRulesRepository? postProcessingRepository,
+    this.enableSpacingFix = true,
+    this.enableCapitalizationFix = true,
+    this.enablePunctuationFix = true,
+    this.enableLanguageFormatting = true,
+    this.enableRulesApplication = true,
+    this.enableFinalCleanup = true,
+    this.addMissingPeriods = false, // По умолчанию НЕ добавляем
   }) : _postProcessingRules = postProcessingRules ?? _getDefaultPostProcessingRules(),
        _languageRules = languageRules ?? _getDefaultLanguageFormattingRules(),
        _logger = logger ?? DebugLogger.instance,
@@ -148,54 +164,64 @@ class PostProcessingLayer extends BaseTranslationLayer {
       final appliedRules = <String>[];
       
       // Step 1: Fix spacing issues
-      final spacingResult = _fixSpacing(processedText);
-      if (spacingResult != processedText) {
-        processedText = spacingResult;
-        hasChanges = true;
-        correctionCount++;
-        _logger.debug('$name: Fixed spacing issues');
+      if (enableSpacingFix) {
+        final spacingResult = _fixSpacing(processedText);
+        if (spacingResult != processedText) {
+          processedText = spacingResult;
+          hasChanges = true;
+          correctionCount++;
+          _logger.debug('$name: Fixed spacing issues');
+        }
       }
       
       // Step 2: Fix capitalization
-      final capitalizationResult = _fixCapitalization(processedText, targetLanguage);
-      if (capitalizationResult != processedText) {
-        processedText = capitalizationResult;
-        hasChanges = true;
-        correctionCount++;
-        _logger.debug('$name: Fixed capitalization');
+      if (enableCapitalizationFix) {
+        final capitalizationResult = _fixCapitalization(processedText, targetLanguage);
+        if (capitalizationResult != processedText) {
+          processedText = capitalizationResult;
+          hasChanges = true;
+          correctionCount++;
+          _logger.debug('$name: Fixed capitalization');
+        }
       }
       
       // Step 3: Fix punctuation
-      final punctuationResult = _fixPunctuation(processedText, targetLanguage);
-      if (punctuationResult != processedText) {
-        processedText = punctuationResult;
-        hasChanges = true;
-        correctionCount++;
-        _logger.debug('$name: Fixed punctuation');
+      if (enablePunctuationFix) {
+        final punctuationResult = _fixPunctuation(processedText, targetLanguage);
+        if (punctuationResult != processedText) {
+          processedText = punctuationResult;
+          hasChanges = true;
+          correctionCount++;
+          _logger.debug('$name: Fixed punctuation');
+        }
       }
       
       // Step 4: Apply language-specific formatting
-      final formattingResult = _applyLanguageFormatting(processedText, targetLanguage);
-      if (formattingResult != processedText) {
-        processedText = formattingResult;
-        hasChanges = true;
-        correctionCount++;
-        _logger.debug('$name: Applied language-specific formatting');
+      if (enableLanguageFormatting) {
+        final formattingResult = _applyLanguageFormatting(processedText, targetLanguage);
+        if (formattingResult != processedText) {
+          processedText = formattingResult;
+          hasChanges = true;
+          correctionCount++;
+          _logger.debug('$name: Applied language-specific formatting');
+        }
       }
       
       // Step 5: Apply post-processing rules
-      final applicableRules = await _getApplicableRules(targetLanguage);
-      applicableRules.sort((a, b) => b.priority.compareTo(a.priority));
-      
-      for (final rule in applicableRules) {
-        final beforeText = processedText;
-        processedText = _applyPostProcessingRule(rule, processedText);
+      if (enableRulesApplication) {
+        final applicableRules = await _getApplicableRules(targetLanguage);
+        applicableRules.sort((a, b) => b.priority.compareTo(a.priority));
         
-        if (processedText != beforeText) {
-          hasChanges = true;
-          correctionCount++;
-          appliedRules.add(rule.ruleId);
-          _logger.debug('$name: Applied rule ${rule.ruleId}: "${rule.description}"');
+        for (final rule in applicableRules) {
+          final beforeText = processedText;
+          processedText = _applyPostProcessingRule(rule, processedText);
+          
+          if (processedText != beforeText) {
+            hasChanges = true;
+            correctionCount++;
+            appliedRules.add(rule.ruleId);
+            _logger.debug('$name: Applied rule ${rule.ruleId}: "${rule.description}"');
+          }
         }
       }
       
@@ -337,8 +363,8 @@ class PostProcessingLayer extends BaseTranslationLayer {
     for (String sentence in sentences) {
       String processed = sentence.trim();
       
-      if (processed.isNotEmpty && !RegExp(r'[.!?]$').hasMatch(processed)) {
-        // Add period if no ending punctuation
+      if (addMissingPeriods && processed.isNotEmpty && !RegExp(r'[.!?]$').hasMatch(processed)) {
+        // Add period if no ending punctuation (only if enabled)
         processed += '.';
       }
       
@@ -630,13 +656,22 @@ class PostProcessingLayer extends BaseTranslationLayer {
       ),
       'fr': const LanguageFormattingRules(
         language: 'fr',
-        quotationMarkOpen: '«',
-        quotationMarkClose: '»',
+        quotationMarkOpen: '« ',  // Французские кавычки с пробелом
+        quotationMarkClose: ' »',
         sentenceEnders: ['.', '!', '?'],
         punctuationRules: {
           ' :': '\u00A0:', // Non-breaking space before colon
           ' ;': '\u00A0;', // Non-breaking space before semicolon
+          ' !': '\u00A0!', // Non-breaking space before exclamation
+          ' ?': '\u00A0?', // Non-breaking space before question mark
         },
+      ),
+      'ru': const LanguageFormattingRules(
+        language: 'ru',
+        quotationMarkOpen: '«',
+        quotationMarkClose: '»',
+        sentenceEnders: ['.', '!', '?'],
+        punctuationRules: {}, // Русский без неразрывных пробелов
       ),
       'de': const LanguageFormattingRules(
         language: 'de',
