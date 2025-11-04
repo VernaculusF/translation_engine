@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart' as crypto;
+import 'package:archive/archive.dart';
+import 'package:path/path.dart' as p;
 import 'package:fluent_translate/src/data/dictionary_repository.dart';
 import 'package:fluent_translate/src/data/phrase_repository.dart';
 import 'package:fluent_translate/src/utils/cache_manager.dart';
@@ -19,13 +21,13 @@ static const String githubApiRepo = 'https://api.github.com/repos/VernaculusF/tr
   String get name => 'db';
   
   @override
-  String get description => 'Download and manage translation data files (JSON/CSV/JSONL)';
+String get description => 'Download zipped data per language pair and import (dictionary/phrases/rules)';
   
   @override
   void printUsage() {
     print('Data Management Command');
     print('');
-    print('Download and manage translation data (dictionary/phrases) from remote repository.');
+print('Download zipped data bundles from remote repository and import into local DB.');
     print('');
     print('Usage:');
     print('  dart run bin/translate_engine.dart db [--lang=<xx-yy>] [--db=<dir>] [options]');
@@ -52,8 +54,8 @@ static const String githubApiRepo = 'https://api.github.com/repos/VernaculusF/tr
     print('  dart run bin/translate_engine.dart db --list');
     print('    Lists all available language pairs');
     print('');
-    print('  dart run bin/translate_engine.dart db --lang=es-en --force');
-    print('    Force re-download Spanish-English dictionary');
+print('  dart run bin/translate_engine.dart db --lang=es-en --force');
+    print('    Force re-download Spanish-English data from zip');
   }
   
   @override
@@ -230,42 +232,63 @@ static const String githubApiRepo = 'https://api.github.com/repos/VernaculusF/tr
     bool force = false,
     String? expectedSha256,
   }) async {
-    final files = ['dictionary.jsonl', 'phrases.jsonl'];
-    for (final fileName in files) {
-      final url = Uri.parse('$source/$lang/$fileName');
-      final destDir = Directory('$dbDir/$lang');
-      if (!destDir.existsSync()) destDir.createSync(recursive: true);
-      final destFile = File('${destDir.path}/$fileName');
+    // Download single zip archive from <source>/zip/<lang>.zip
+    final zipUrl = Uri.parse('$source/zip/$lang.zip');
+    final destRoot = Directory(dbDir);
+    if (!destRoot.existsSync()) destRoot.createSync(recursive: true);
+    final zipPath = p.join(dbDir, '$lang.zip');
+    final zipFile = File(zipPath);
 
-      if (destFile.existsSync() && !force) {
-        print('  - $fileName already exists, skipping (use --force to re-download)');
-        continue;
-      }
-
-      final resp = await _httpGetWithRetry(url);
+    // Always re-download zip if --force or zip missing
+    if (force || !zipFile.existsSync()) {
+      final resp = await _httpGetWithRetry(zipUrl);
       if (resp.statusCode != 200) {
-        print('  - Failed to download $fileName: HTTP ${resp.statusCode}');
+        print('  - Failed to download ZIP: HTTP ${resp.statusCode}');
         return false;
       }
       final bytes = resp.bodyBytes;
-
-      // Optional SHA-256 verification
       if (expectedSha256 != null && expectedSha256.trim().isNotEmpty) {
         final actual = crypto.sha256.convert(bytes).toString();
         if (!actual.toLowerCase().startsWith(expectedSha256.toLowerCase())) {
-          print('  - Hash mismatch for $fileName. Expected prefix: $expectedSha256, actual: $actual');
+          print('  - Hash mismatch for zip. Expected prefix: $expectedSha256, actual: $actual');
           return false;
         }
       }
-
-      // Write atomically: tmp then rename
-      final tmp = File('${destFile.path}.tmp');
-      await tmp.writeAsBytes(bytes, flush: true);
-      if (destFile.existsSync()) destFile.deleteSync();
-      await tmp.rename(destFile.path);
+      await zipFile.writeAsBytes(bytes, flush: true);
+      print('  - Downloaded archive: $zipUrl');
     }
 
-    // Import using repositories
+    // Extract archive (expects folder <lang>/ inside)
+    try {
+      final bytes = await zipFile.readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes, verify: true);
+      for (final entry in archive) {
+        final name = _sanitizeZipEntry(entry.name);
+        if (name.isEmpty) continue;
+        final outPath = p.normalize(p.join(destRoot.path, name));
+        if (!p.isWithin(destRoot.path, outPath)) {
+          // prevent traversal
+          continue;
+        }
+        if (entry.isFile) {
+          final outFile = File(outPath);
+          if (!outFile.parent.existsSync()) outFile.parent.createSync(recursive: true);
+          await outFile.writeAsBytes(entry.content as List<int>, flush: true);
+        } else {
+          final dir = Directory(outPath);
+          if (!dir.existsSync()) dir.createSync(recursive: true);
+        }
+      }
+      print('  - Extracted archive to $dbDir');
+    } catch (e) {
+      print('  - Failed to extract ZIP: $e');
+      return false;
+    } finally {
+      // Remove zip file
+      try { if (zipFile.existsSync()) zipFile.deleteSync(); } catch (_) {}
+    }
+
+    // Import dictionary and phrases
     final cache = CacheManager();
     final dictRepo = DictionaryRepository(dataDirPath: dbDir, cacheManager: cache);
     final phraseRepo = PhraseRepository(dataDirPath: dbDir, cacheManager: cache);
@@ -285,6 +308,13 @@ static const String githubApiRepo = 'https://api.github.com/repos/VernaculusF/tr
       }
     }
     return true;
+  }
+
+  String _sanitizeZipEntry(String name) {
+    var n = name.replaceAll('\\\\', '/');
+    while (n.startsWith('/')) { n = n.substring(1); }
+    n = n.replaceAll('..', '');
+    return n.trim();
   }
   
   Future<List<String>> _getAvailableLanguages(String source) async {

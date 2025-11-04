@@ -41,16 +41,24 @@ await engine.initialize(customDatabasePath: './translation_data');
 await engine.initialize();
 ```
 
-### 3. Download Translation Dictionaries
+### 3. Download Translation Data (ZIP bundles)
 
-Use the CLI tool to download language dictionaries:
+Use the CLI to download a zipped bundle per language pair from the data repo; the archive is extracted into the DB folder and removed automatically.
 
 ```bash
 # List available language pairs
 dart run fluent_translate:translate_engine db --list
 
-# Download English→Russian dictionary
+# Download English→Russian (downloads zip/en-ru.zip and extracts into ./translation_data)
 dart run fluent_translate:translate_engine db --lang=en-ru --db=./translation_data
+
+# Download from a custom source (optional)
+# Default source: https://raw.githubusercontent.com/VernaculusF/translation-engine-data/main
+# Expected path: <source>/zip/<lang>.zip
+# Example (explicit):
+dart run fluent_translate:translate_engine db \
+  --source=https://raw.githubusercontent.com/VernaculusF/translation-engine-data/main \
+  --lang=en-ru --db=./translation_data
 
 # Download all available language pairs
 dart run fluent_translate:translate_engine db --db=./translation_data

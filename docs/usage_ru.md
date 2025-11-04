@@ -25,7 +25,11 @@ dart pub get
 
 2) Подготовка файлов данных
 
-Вариант A: встроенный CLI для загрузки данных из внешнего репозитория
+Вариант A: встроенный CLI — загрузка ZIP-архива на языковую пару из внешнего репозитория
+
+- По умолчанию источник: https://raw.githubusercontent.com/VernaculusF/translation-engine-data/main
+- Ожидаемый путь архива: `<source>/zip/<lang>.zip` (внутри — папка `<lang>/` с файлами)
+- После загрузки архив автоматически распаковывается в `--db`, а ZIP удаляется.
 
 - Загрузить английский→русский в ./translation_data
 ```
@@ -34,6 +38,12 @@ dart run fluent_translate:translate_engine db --lang=en-ru --db=./translation_da
 - Показать доступные языковые пары
 ```
 dart run fluent_translate:translate_engine db --list
+```
+- Явно указать источник
+```
+dart run fluent_translate:translate_engine db \
+  --source=https://raw.githubusercontent.com/VernaculusF/translation-engine-data/main \
+  --lang=en-ru --db=./translation_data
 ```
 - Загрузить все доступные пары
 ```

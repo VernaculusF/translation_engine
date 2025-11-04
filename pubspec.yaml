@@ -14,6 +14,7 @@ dependencies:
   path: ^1.8.3
   http: ^1.1.0
   crypto: ^3.0.3
+  archive: ^3.4.10
 
 executables:
   translate_engine: 

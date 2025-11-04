@@ -5,18 +5,22 @@
 
 Команды данных
 - db — загрузка и управление файлами данных из удалённого репозитория
+  - Загрузка выполняется архивом ZIP на языковую пару: `<source>/zip/<lang>.zip`.
+  - После загрузки архив автоматически распаковывается в `--db`, ZIP удаляется.
+  - В распакованной папке `<lang>/` ожидаются файлы слоёв: `dictionary.jsonl`, `phrases.jsonl`, `grammar_rules.jsonl`, `word_order_rules.jsonl`, `post_processing_rules.jsonl`.
   - Опции:
     - `--lang=<xx-yy>` язык (например, en-ru). Если не указан — все доступные
     - `--db=<dir>` каталог базы (по умолчанию `./translation_data`)
-    - `--source=<url>` альтернативный HTTPS-источник
+    - `--source=<url>` HTTPS-источник (по умолчанию `https://raw.githubusercontent.com/VernaculusF/translation-engine-data/main`)
     - `--list` вывести доступные языковые пары без загрузки
-    - `--force` перезагрузить при наличии файлов
-    - `--sha256=<prefix>` ожидаемый префикс SHA-256 хэша (проверка целостности)
+    - `--force` перезагрузить при наличии локальных данных (скачать ZIP заново)
+    - `--sha256=<prefix>` ожидаемый префикс SHA-256 хэша архива (проверка целостности)
     - `--allow-any-source` ослабить политику источников (по умолчанию allowlist github*)
     - `--dry-run` показать, что будет скачано, без фактической загрузки
   - Примеры:
     - `dart run fluent_translate:translate_engine db --list`
     - `dart run fluent_translate:translate_engine db --lang=en-ru --db=./translation_data`
+    - `dart run fluent_translate:translate_engine db --source=https://raw.githubusercontent.com/VernaculusF/translation-engine-data/main --lang=en-ru`
 
 - import — импорт слов/фраз из файлов (CSV/JSON/JSONL)
   - Пример: `dart run fluent_translate:translate_engine import --file=./data/dict.jsonl --lang=en-ru --db=./translation_data`
