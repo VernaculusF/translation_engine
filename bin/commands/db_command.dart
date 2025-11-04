@@ -288,25 +288,8 @@ print('  dart run bin/translate_engine.dart db --lang=es-en --force');
       try { if (zipFile.existsSync()) zipFile.deleteSync(); } catch (_) {}
     }
 
-    // Import dictionary and phrases
-    final cache = CacheManager();
-    final dictRepo = DictionaryRepository(dataDirPath: dbDir, cacheManager: cache);
-    final phraseRepo = PhraseRepository(dataDirPath: dbDir, cacheManager: cache);
-
-    final dictImporter = DictionaryImporter(repository: dictRepo);
-    final phraseImporter = PhraseImporter(repository: phraseRepo);
-
-    final dictReport = await dictImporter.importJsonLines(File('$dbDir/$lang/dictionary.jsonl'), languagePair: lang);
-    final phraseReport = await phraseImporter.importJsonLines(File('$dbDir/$lang/phrases.jsonl'), languagePair: lang);
-
-    print('  - Imported dictionary: inserted/updated ${dictReport.insertedOrUpdated} of ${dictReport.total}, skipped ${dictReport.skipped}');
-    print('  - Imported phrases: inserted/updated ${phraseReport.insertedOrUpdated} of ${phraseReport.total}, skipped ${phraseReport.skipped}');
-    if (dictReport.errors.isNotEmpty || phraseReport.errors.isNotEmpty) {
-      print('  - Errors:');
-      for (final e in [...dictReport.errors, ...phraseReport.errors]) {
-        print('    * $e');
-      }
-    }
+    // Skip importing into repositories here to avoid rewriting extracted files.
+    // The engine repositories will read the JSONL files on demand without altering them.
     return true;
   }
 
