@@ -246,22 +246,31 @@ class GrammarLayer extends BaseTranslationLayer {
   String _applyGrammarRule(GrammarRule rule, String text, TranslationContext context) {
     try {
       return text.replaceAllMapped(rule.pattern, (match) {
-        String replacement = rule.replacement;
-        
-        // Replace placeholders in replacement string
-        for (int i = 0; i <= match.groupCount; i++) {
-          final group = match.group(i);
-          if (group != null) {
-            replacement = replacement.replaceAll('\\$i', group);
-          }
-        }
-        
-        return replacement;
+        return _expandBackreferences(rule.replacement, match);
       });
     } catch (e) {
       _logger.warning('$name: Failed to apply rule ${rule.ruleId}: $e');
       return text;
     }
+  }
+
+  String _expandBackreferences(String template, Match match) {
+    // Replace $0..$9 with captured groups; also support \$n and ${n}
+    String out = template;
+    out = out.replaceAllMapped(RegExp(r'\$(\d+)'), (m) {
+      final idx = int.tryParse(m.group(1) ?? '') ?? -1;
+      return idx >= 0 && idx <= match.groupCount ? (match.group(idx) ?? '') : '';
+    });
+    out = out.replaceAllMapped(RegExp(r'\\\$(\d+)'), (m) {
+      // Handle escaped $n (\\$n in JSON -> \$n in string). Treat as backref too.
+      final idx = int.tryParse(m.group(1) ?? '') ?? -1;
+      return idx >= 0 && idx <= match.groupCount ? (match.group(idx) ?? '') : '';
+    });
+    out = out.replaceAllMapped(RegExp(r'\$\{(\d+)\}'), (m) {
+      final idx = int.tryParse(m.group(1) ?? '') ?? -1;
+      return idx >= 0 && idx <= match.groupCount ? (match.group(idx) ?? '') : '';
+    });
+    return out;
   }
 
   /// Performs verb conjugation based on language rules
@@ -388,9 +397,10 @@ class GrammarLayer extends BaseTranslationLayer {
     if (original.isEmpty || replacement.isEmpty) return replacement;
     
     if (original[0] == original[0].toUpperCase()) {
-      return replacement[0].toUpperCase() + replacement.substring(1).toLowerCase();
+      // Preserve only the first-letter capitalization; keep rest as-is to avoid unwanted letter changes
+      return replacement[0].toUpperCase() + (replacement.length > 1 ? replacement.substring(1) : '');
     }
-    return replacement.toLowerCase();
+    return replacement; // keep original casing of replacement
   }
 
   /// Creates a layer result with debug information

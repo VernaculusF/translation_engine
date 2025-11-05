@@ -556,11 +556,30 @@ class PostProcessingLayer extends BaseTranslationLayer {
   /// Applies a specific post-processing rule
   String _applyPostProcessingRule(PostProcessingRule rule, String text) {
     try {
-      return text.replaceAll(rule.pattern, rule.replacement);
+      return text.replaceAllMapped(rule.pattern, (match) {
+        return _expandBackreferences(rule.replacement, match);
+      });
     } catch (e) {
       _logger.warning('$name: Failed to apply rule ${rule.ruleId}: $e');
       return text;
     }
+  }
+
+  String _expandBackreferences(String template, Match match) {
+    String out = template;
+    out = out.replaceAllMapped(RegExp(r'\$(\d+)'), (m) {
+      final idx = int.tryParse(m.group(1) ?? '') ?? -1;
+      return idx >= 0 && idx <= match.groupCount ? (match.group(idx) ?? '') : '';
+    });
+    out = out.replaceAllMapped(RegExp(r'\\\$(\d+)'), (m) {
+      final idx = int.tryParse(m.group(1) ?? '') ?? -1;
+      return idx >= 0 && idx <= match.groupCount ? (match.group(idx) ?? '') : '';
+    });
+    out = out.replaceAllMapped(RegExp(r'\$\{(\d+)\}'), (m) {
+      final idx = int.tryParse(m.group(1) ?? '') ?? -1;
+      return idx >= 0 && idx <= match.groupCount ? (match.group(idx) ?? '') : '';
+    });
+    return out;
   }
 
   /// Creates a layer result with debug information

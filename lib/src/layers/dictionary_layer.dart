@@ -126,16 +126,19 @@ class DictionaryLayer extends BaseTranslationLayer {
     final stopwatch = Stopwatch()..start();
     
     try {
-      // Попытаться использовать токены из PreProcessingLayer, чтобы сохранить согласованность
+      // Если фразовый слой уже применён, работаем по текущему тексту и не используем preproc-токены
+      final phraseApplied = context.getMetadata<bool>('phrase_applied') == true;
       final preprocTokens = context.getMetadata<List<TextToken>>('preprocessing_tokens');
       late final List<TextToken> tokens;
-      if (preprocTokens != null && preprocTokens.isNotEmpty) {
+      if (phraseApplied) {
+        tokens = _tokenizeText(text);
+      } else if (preprocTokens != null && preprocTokens.isNotEmpty) {
         tokens = preprocTokens;
       } else {
         tokens = _tokenizeText(text);
       }
       
-      final usingPreproc = preprocTokens != null && preprocTokens.isNotEmpty;
+      final usingPreproc = !phraseApplied && preprocTokens != null && preprocTokens.isNotEmpty;
       
       // Извлекаем только словарные токены
       final wordTokens = tokens.where((token) => token.type == TokenType.word).toList();
@@ -160,9 +163,30 @@ class DictionaryLayer extends BaseTranslationLayer {
       int successfulTranslations = 0;
       int totalWords = 0;
       
+      // Протект диапазонов, которые переводил фразовый слой (координаты текущего текста)
+      final protected = context.getMetadata<List>('phrase_protected_ranges')
+          ?.whereType<List>()
+          .map((e) => (e.length >= 2) ? (List<int>.from(e.take(2))) : <int>[])
+          .where((e) => e.length == 2)
+          .map((e) => (start: e[0], end: e[1]))
+          .toList() ?? const [];
+
+      bool _isProtected(TextToken t) {
+        for (final r in protected) {
+          if (!(t.endPosition <= r.start || t.startPosition >= r.end)) return true;
+        }
+        return false;
+      }
+
       for (final token in tokens) {
         if (token.type == TokenType.word) {
           totalWords++;
+
+          // Пропустить токены внутри защищённых диапазонов (фразы уже переведены)
+          if (_isProtected(token)) {
+            translatedTokens.add(token);
+            continue;
+          }
           
           // Проверяем принудительные переводы
           final forceTranslation = context.getForceTranslation(token.normalized);
@@ -225,9 +249,7 @@ class DictionaryLayer extends BaseTranslationLayer {
       }
       
       // Сборка переведенного текста
-      final translatedText = usingPreproc
-          ? _reconstructFromOriginal(text, translatedTokens)
-          : _reconstructTextFromTokens(translatedTokens);
+      final translatedText = _reconstructTextFromTokens(translatedTokens);
       
       stopwatch.stop();
       

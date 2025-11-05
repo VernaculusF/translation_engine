@@ -3,6 +3,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 class FileStorageService {
   final String rootDir; // e.g., ./translation_data
@@ -35,7 +36,7 @@ class FileStorageService {
     if (!d.existsSync()) d.createSync(recursive: true);
   }
 
-  // Read JSONL lazily as stream of Map
+  // Read JSONL lazily as stream of Map (UTF-8 only)
   Stream<Map<String, dynamic>> readJsonLines(File file) async* {
     if (!file.existsSync()) return;
     final stream = file.openRead();
@@ -49,6 +50,59 @@ class FileStorageService {
         // skip broken line
       }
     }
+  }
+
+  // Read whole text with BOM/encoding detection (UTF-8/UTF-16 LE/BE)
+  String readAllTextDetectingEncoding(File file) {
+    if (!file.existsSync()) return '';
+    final raf = file.openSync(mode: FileMode.read);
+    try {
+      final headerLen = (raf.lengthSync() >= 4) ? 4 : raf.lengthSync();
+      final header = raf.readSync(headerLen);
+      // Detect BOMs
+      bool isUtf8Bom = header.length >= 3 && header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF;
+      bool isUtf16LeBom = header.length >= 2 && header[0] == 0xFF && header[1] == 0xFE;
+      bool isUtf16BeBom = header.length >= 2 && header[0] == 0xFE && header[1] == 0xFF;
+
+      // Read remaining bytes
+      raf.setPositionSync(0);
+      final bytes = raf.readSync(raf.lengthSync());
+
+      if (isUtf8Bom) {
+        return utf8.decode(bytes.sublist(3), allowMalformed: true);
+      }
+      if (isUtf16LeBom) {
+        return _decodeUtf16(bytes.sublist(2), Endian.little);
+      }
+      if (isUtf16BeBom) {
+        return _decodeUtf16(bytes.sublist(2), Endian.big);
+      }
+
+      // No BOM: try to guess UTF-16 (presence of many 0x00 bytes)
+      int zeroCount = 0;
+      for (int i = 0; i < bytes.length && i < 2000; i++) {
+        if (bytes[i] == 0x00) zeroCount++;
+      }
+      if (zeroCount > 200) {
+        // Likely UTF-16 without BOM; assume little-endian (Windows default)
+        return _decodeUtf16(bytes, Endian.little);
+      }
+
+      // Fallback UTF-8
+      return utf8.decode(bytes, allowMalformed: true);
+    } finally {
+      raf.closeSync();
+    }
+  }
+
+  String _decodeUtf16(List<int> bytes, Endian endian) {
+    final bd = ByteData.sublistView(Uint8List.fromList(bytes));
+    final units = <int>[];
+    for (int i = 0; i + 1 < bd.lengthInBytes; i += 2) {
+      final unit = bd.getUint16(i, endian);
+      units.add(unit);
+    }
+    return String.fromCharCodes(units);
   }
 
   // Acquire a simple file lock using an adjacent .lock file (best-effort)

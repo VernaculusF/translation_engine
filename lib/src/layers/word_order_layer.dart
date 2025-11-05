@@ -596,22 +596,29 @@ class WordOrderLayer extends BaseTranslationLayer {
   ) {
     try {
       return text.replaceAllMapped(rule.pattern, (match) {
-        String reordered = rule.reorderTemplate;
-        
-        // Replace placeholders with captured groups
-        for (int i = 0; i <= match.groupCount; i++) {
-          final group = match.group(i);
-          if (group != null) {
-            reordered = reordered.replaceAll('\\$i', group);
-          }
-        }
-        
-        return reordered;
+        return _expandBackreferences(rule.reorderTemplate, match);
       });
     } catch (e) {
       _logger.warning('$name: Failed to apply rule ${rule.ruleId}: $e');
       return text;
     }
+  }
+
+  String _expandBackreferences(String template, Match match) {
+    String out = template;
+    out = out.replaceAllMapped(RegExp(r'\$(\d+)'), (m) {
+      final idx = int.tryParse(m.group(1) ?? '') ?? -1;
+      return idx >= 0 && idx <= match.groupCount ? (match.group(idx) ?? '') : '';
+    });
+    out = out.replaceAllMapped(RegExp(r'\\\$(\d+)'), (m) {
+      final idx = int.tryParse(m.group(1) ?? '') ?? -1;
+      return idx >= 0 && idx <= match.groupCount ? (match.group(idx) ?? '') : '';
+    });
+    out = out.replaceAllMapped(RegExp(r'\$\{(\d+)\}'), (m) {
+      final idx = int.tryParse(m.group(1) ?? '') ?? -1;
+      return idx >= 0 && idx <= match.groupCount ? (match.group(idx) ?? '') : '';
+    });
+    return out;
   }
 
 

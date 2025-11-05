@@ -348,6 +348,12 @@ abstract class BaseTranslationLayer {
 
 Слои регистрируются в `TranslationPipeline` через `LayerAdaptersFactory`:
 
+Интер‑слойные контракты (важно для качества):
+- Phrase → Dictionary: фразовый слой записывает `phrase_protected_ranges` и `phrase_applied=true` в контекст; словарь обязан токенизировать текущий текст и пропускать эти диапазоны
+- Encoding: репозитории читают JSONL с автоопределением BOM (UTF‑8/UTF‑16 LE/BE) и поддерживают переносы строк \n/\r\n/\r
+- Rules placeholders: Grammar/WordOrder/PostProcessing обрабатывают подстановки `$1`, `$2`, `${n}` в replacement/шаблонах; «сырые» `$` не допускаются в данных правил
+- Phrase lookup: помимо exact/loose есть индекс "words-only" (без пунктуации) для устойчивых выражений из n‑gram токенизации
+
 ```dart
 // В _initializeDefaultLayers():
 registerLayer(LayerAdaptersFactory.preProcessing());

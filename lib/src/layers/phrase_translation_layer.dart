@@ -286,13 +286,22 @@ class PhraseTranslationLayer extends BaseTranslationLayer {
       matches.sort((a,b) => a.startPos.compareTo(b.startPos));
       final buf = StringBuffer();
       int pos = 0;
+      // Сохраним защищённые диапазоны в координатах выходного текста
+      final protected = <List<int>>[]; // [start,end)
       for (final m in matches) {
         if (m.startPos > pos) buf.write(text.substring(pos, m.startPos));
+        final outStart = buf.length;
         buf.write(m.target);
+        final outEnd = buf.length;
+        protected.add([outStart, outEnd]);
         pos = m.endPos;
       }
       if (pos < text.length) buf.write(text.substring(pos));
       final processed = buf.toString();
+
+      // Положим защищённые диапазоны в контекст, чтобы словарь их не трогал
+      context.setMetadata('phrase_protected_ranges', protected);
+      context.setMetadata('phrase_applied', true);
 
       final layerInfo = _createDebugInfo(
         inputText: text,

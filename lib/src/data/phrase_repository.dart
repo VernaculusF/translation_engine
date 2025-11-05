@@ -295,6 +295,13 @@ class PhraseRepository {
       // Try loose variant without apostrophes
       final loose = canonical.replaceAll("'", '');
       entry = cache.bySourceLoose[loose];
+    }
+    if (entry == null) {
+      // Try words-only lookup (punctuation stripped), suits n-gram tokenization
+      final wordsOnly = canonical.replaceAll(RegExp(r"[^a-z0-9\s]", caseSensitive: false), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (wordsOnly.isNotEmpty) {
+        entry = cache.bySourceWordsOnly[wordsOnly];
+      }
       if (entry == null) return null;
     }
 
@@ -607,6 +614,8 @@ class _PhraseLangCache {
   final FileStorageService storage;
   final Map<String, PhraseEntry> bySource = {};
   final Map<String, PhraseEntry> bySourceLoose = {};
+  // Words-only (punctuation-stripped) keys for phrase lookup from tokenized text
+  final Map<String, PhraseEntry> bySourceWordsOnly = {};
   int maxId = 0;
 
   _PhraseLangCache(this.lang, this.storage) {
@@ -623,10 +632,19 @@ class _PhraseLangCache {
     return t;
   }
 
+  String _wordsOnlyKey(String key) {
+    // Strip punctuation/symbols, keep letters, numbers and spaces; collapse spaces
+    var t = key.replaceAll(RegExp(r"[^a-z0-9\s]", caseSensitive: false), '');
+    t = t.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return t;
+  }
+
   void _load() {
     final file = storage.phrasesFile(lang);
     if (!file.existsSync()) return;
-    final lines = file.readAsLinesSync();
+    // Decode with BOM/encoding detection and split on all newline variants
+    final content = storage.readAllTextDetectingEncoding(file);
+    final lines = content.split(RegExp(r'\r\n|\n|\r'));
     for (final line in lines) {
       if (line.trim().isEmpty) continue;
       try {
@@ -634,8 +652,10 @@ class _PhraseLangCache {
         final entry = PhraseEntry.fromMap(map);
         final key = _normalizeKey(entry.sourcePhrase);
         final loose = _looseKey(key);
+        final words = _wordsOnlyKey(key);
         bySource[key] = entry;
         bySourceLoose[loose] = entry;
+        if (words.isNotEmpty) bySourceWordsOnly[words] = entry;
         if (entry.id != null && entry.id! > maxId) maxId = entry.id!;
       } catch (_) {
         // skip

@@ -483,7 +483,9 @@ class _DictLangCache {
   void _load() {
     final file = storage.dictFile(lang);
     if (!file.existsSync()) return;
-    final lines = file.readAsLinesSync();
+    // Decode with BOM/encoding detection and split on all newline variants
+    final content = storage.readAllTextDetectingEncoding(file);
+    final lines = content.split(RegExp(r'\r\n|\n|\r'));
     for (final line in lines) {
       if (line.trim().isEmpty) continue;
       try {

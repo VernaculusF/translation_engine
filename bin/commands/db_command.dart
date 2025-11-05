@@ -6,11 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
-import 'package:fluent_translate/src/data/dictionary_repository.dart';
-import 'package:fluent_translate/src/data/phrase_repository.dart';
-import 'package:fluent_translate/src/utils/cache_manager.dart';
-import 'package:fluent_translate/src/tools/dictionary_importer.dart';
-import 'package:fluent_translate/src/tools/phrase_importer.dart';
 import 'base_command.dart';
 
 class DbCommand extends BaseCommand {

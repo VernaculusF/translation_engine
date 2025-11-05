@@ -114,10 +114,10 @@ void main() async {
 
 ## Features
 
-- ✅ **Offline Translation**: Works completely offline with local JSON/JSONL files
-- ✅ **Multi-layer Processing**: 6-layer translation pipeline including preprocessing, dictionary lookup, and post-processing
-- ✅ **Dictionary Management**: Built-in CLI for downloading and managing translation dictionaries
-- ✅ **Phrase Support**: Exact phrase matching for better translation accuracy
+- ✅ **Offline Translation**: Works completely offline with local JSON/JSONL files (UTF‑8/UTF‑16 supported with BOM/autodetect)
+- ✅ **Multi-layer Processing**: 6-layer translation pipeline (phrases → dictionary → grammar → word order → post-processing)
+- ✅ **Phrase Support**: Exact and n‑gram phrase matching with punctuation-tolerant lookup; protected ranges prevent overwriting by later layers
+- ✅ **Dictionary Management**: Built-in CLI for downloading and managing translation data (ZIP bundles)
 - ✅ **Caching**: Efficient file-based caching for improved performance
 - ✅ **Flutter Integration**: Designed specifically for Flutter applications
 - ✅ **Error Handling**: Comprehensive error handling and fallback mechanisms

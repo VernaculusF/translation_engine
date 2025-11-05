@@ -76,6 +76,12 @@ Future<void> importSample() async {
 
 3) Быстрый старт (Dart/Flutter)
 
+Порядок слоёв и ожидаемое поведение:
+- Фразы (Phrase) применяются первыми; заменённые участки защищаются от изменений словарём
+- Слова (Dictionary) работают только вне защищённых диапазонов фраз
+- Грамматика/Порядок слов/Постобработка опираются на результат предыдущих слоёв
+- В шаблонах правил используйте $1, $2, … для групп (не оставляйте «$» как текст)
+
 ```dart
 import 'package:fluent_translate/fluent_translate.dart';
 
@@ -101,6 +107,7 @@ Future<void> main() async {
 
 - Словарь: translation_data/{langPair}/dictionary.jsonl
 - Фразы: translation_data/{langPair}/phrases.jsonl
+  - Поддерживаются UTF‑8 и UTF‑16 (LE/BE) с BOM/автоопределением; переносы строк \n/\r\n/\r
 - Пользовательские данные: translation_data/user/
   - translation_history.jsonl
   - user_settings.json

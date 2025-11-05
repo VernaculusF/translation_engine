@@ -448,6 +448,7 @@ class TranslationPipeline {
       }
     }
 
+    // Register all default layers
     safeRegister('preProcessing', () => registerLayer(LayerAdaptersFactory.preProcessing()));
     safeRegister('phraseLookup', () => registerLayer(LayerAdaptersFactory.phraseLookup(repo: phraseRepository)));
     safeRegister('dictionary', () => registerLayer(LayerAdaptersFactory.dictionary(repo: dictionaryRepository)));
