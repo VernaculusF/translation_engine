@@ -188,6 +188,11 @@ class PhraseTranslationLayer extends BaseTranslationLayer {
       );
       if (exact != null) {
         final processed = exact.targetPhrase;
+        // Mark phrase applied and protect the whole output range to prevent dictionary overrides
+        context.setMetadata('phrase_protected_ranges', [
+          [0, processed.length]
+        ]);
+        context.setMetadata('phrase_applied', true);
         stopwatch.stop();
         return LayerResult.success(
           processedText: processed,
@@ -200,6 +205,7 @@ class PhraseTranslationLayer extends BaseTranslationLayer {
               'matched_phrase': normalizedSource,
               'target_phrase': exact.targetPhrase,
               'confidence_raw': exact.confidence,
+              'exact_match': true,
             },
           ),
         );
