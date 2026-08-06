@@ -2,7 +2,7 @@
 
 Offline translation engine for Dart and Flutter applications. It processes local JSON and JSONL translation data through a rule-based pipeline without an online translation service.
 
-## Возможности
+## Features
 
 - Offline translation with local dictionaries and phrase data
 - Layered processing for phrases, dictionary entries, grammar, word order, and post-processing
@@ -13,7 +13,7 @@ Offline translation engine for Dart and Flutter applications. It processes local
 
 The project is under active development. Vocabulary coverage and grammar rules are limited, and public APIs may change.
 
-## Стек
+## Stack
 
 - Dart 3.9+
 - Flutter
@@ -21,7 +21,7 @@ The project is under active development. Vocabulary coverage and grammar rules a
 - Dart CLI
 - `flutter_test`, `test`, and Mockito
 
-## Быстрый старт
+## Quick start
 
 Add the package to an application:
 
@@ -65,7 +65,7 @@ flutter test
 dart run bin/translate_engine.dart --help
 ```
 
-## Структура проекта
+## Project structure
 
 - `lib/fluent_translate.dart` — public library entry point
 - `lib/src/core/` — engine configuration and translation pipeline
@@ -77,6 +77,6 @@ dart run bin/translate_engine.dart --help
 - `test/` — unit, integration, end-to-end, and benchmark tests
 - `docs/` — developer and rule-authoring documentation
 
-## Лицензия
+## License
 
 The project is distributed under the terms in `LICENSE`.
